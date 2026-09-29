@@ -127,7 +127,7 @@ async def style_extract(file: UploadFile = File(...)):
         if variety < 0.18 else
         "参考图色相丰富，可以连配色一起替换" if variety > 0.35 else
         "参考图色相偏单调，建议只取质感")
-    return {"profile": prof, "preview": f"/media/{os.path.basename(tmp)}"}
+    return {"profile": prof, "preview": f"/media/api/{os.path.basename(tmp)}"}
 
 
 # ════════════════════════════════════════════════════════════
@@ -181,7 +181,9 @@ def api_render(req: RenderReq):
     path = os.path.join(MEDIA, name)
     img.save(path)
     return {
-        "image": f"/media/{name}",
+        # 注意：MEDIA 是 output/api，而 StaticFiles 挂在 output/ 上，
+        # 所以 URL 必须带 api/ 这一段。少了它就 404 破图（踩过）。
+        "image": f"/media/api/{name}",
         "width": img.size[0], "height": img.size[1],
         "elapsed": round(time.time() - t0, 2),
         "params": req.model_dump(exclude={"style_profile"}),
