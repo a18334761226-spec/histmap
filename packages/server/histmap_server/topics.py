@@ -140,7 +140,18 @@ def _boundary_dates(data: dict) -> list[str]:
         s = str(mk.get("date") or "")[:10]
         if s:
             ds.add(s)
-    return sorted(d for d in ds if f"{y0}-01-01" <= d <= f"{y1}-12-31")
+    # 排序/筛选都按解析后的数字走，别按字符串：'1941-6-22' 这种
+    # 单数字月份写成字符串会排到 '1941-12-01' 后面去。
+    return sorted((d for d in ds if y0 <= _yr(d) <= y1), key=_date_key)
+
+
+def _yr(d: str) -> int:
+    return int(str(d).split("-")[0])
+
+
+def _date_key(d: str):
+    p = [p for p in str(d)[:10].split("-") if p != ""]
+    return (int(p[0]), int(p[1]) if len(p) > 1 else 1, int(p[2]) if len(p) > 2 else 1)
 
 
 def _dynasty_dates(data: dict) -> list[str]:
@@ -301,17 +312,24 @@ def _draw_overlays(img, renderer, tl, d, style, W, H, topic: Topic):
     rows = []
     evs = getattr(tl, "events", []) or []
     mks = getattr(tl, "data", {}).get("markers") or []
-    cand = [(str(e.get("date") or "")[:10], e.get("label") or "") for e in evs]
-    cand += [(str(m.get("date") or "")[:10], m.get("label") or "") for m in mks]
-    ds = d.isoformat()
-    cand = [c for c in cand if c[0] and c[0] <= ds and c[1]]
+    cand = []
+    for e in list(evs) + list(mks):
+        s = str(e.get("date") or "")[:10]
+        lab = e.get("label") or ""
+        if not (s and lab):
+            continue
+        try:                               # 脏日期直接跳过，别让整张图挂掉
+            cand.append((_date.fromisoformat(s), lab))
+        except ValueError:
+            continue
+    cand = [c for c in cand if c[0] <= d]
     cand.sort(key=lambda x: x[0])
     seen, picked = set(), []
     for dt, lab in reversed(cand):
         if lab in seen or any(lab in s or s in lab for s in seen):
             continue
         seen.add(lab)
-        picked.append((_date.fromisoformat(dt), lab))
+        picked.append((dt, lab))
         if len(picked) >= 3:
             break
     picked.reverse()
@@ -325,6 +343,82 @@ def _draw_overlays(img, renderer, tl, d, style, W, H, topic: Topic):
 
 # ── dynasty 类 ──────────────────────────────────────────────
 _dyn_cache: dict = {}
+_ctrl_cache: dict = {}
+
+
+def _topic_json(topic: Topic) -> dict:
+    """题材的控制表原文（带缓存）。朝代名、显示名、口径声明都从这儿读。"""
+    key = topic.id
+    if key not in _ctrl_cache:
+        p = topic.control_path()
+        _ctrl_cache[key] = json.load(open(p, encoding="utf-8")) if p else {}
+    return _ctrl_cache[key]
+
+
+def _file_sha1(path: str) -> str:
+    """JSON 文件的**语义**指纹：重排键序、改缩进、动换行都不算变化。
+
+    直接哈希字节会让「只调了格式」被误报成过期，那样这个自检很快就没人信了。
+    """
+    import hashlib
+    obj = json.load(open(path, encoding="utf-8"))
+    canon = json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                       separators=(",", ":")).encode("utf-8")
+    return hashlib.sha1(canon).hexdigest()[:16]
+
+
+def _units_path(topic: Topic) -> str | None:
+    up = topic.raw.get("units")
+    if not up:
+        return None
+    return up if os.path.isabs(up) else os.path.join(PROC, up)
+
+
+def stale_years(topic: Topic) -> list[int]:
+    """哪几年的几何是拿**旧**控制表/旧坐标表算出来的。
+
+    改了 data/control/*.json 却忘了重跑 build_dynasty_map.py 时，
+    界面照旧显示旧图，看图的人只会以为是别的地方坏了。
+    这个函数就是用来戳破这件事的 —— 服务启动时会把结果打出来。
+    """
+    if topic.kind != "dynasty":
+        return []
+    ctrl, up = topic.control_path(), _units_path(topic)
+    if not ctrl or not up or not (os.path.exists(ctrl) and os.path.exists(up)):
+        return []
+    cur_c, cur_u = _file_sha1(ctrl), _file_sha1(up)
+    bad = []
+    for y in topic.raw.get("years") or []:
+        p = os.path.join(PROC, f"{topic.id}_{y}_map.geojson")
+        if not os.path.exists(p):
+            bad.append(int(y))
+            continue
+        try:
+            m = (json.load(open(p, encoding="utf-8")).get("_meta") or {})
+        except Exception:
+            bad.append(int(y))
+            continue
+        if m.get("control_sha1") != cur_c or m.get("gazetteer_sha1") != cur_u:
+            bad.append(int(y))
+    return bad
+
+
+def stale_report() -> list[dict]:
+    """全部题材的过期情况，给启动日志和 /api/health 用。"""
+    out = []
+    for t in load_topics().values():
+        try:
+            ys = stale_years(t)
+        except Exception as e:
+            ys = []
+            out.append({"topic": t.id, "error": f"{type(e).__name__}: {e}"})
+            continue
+        if ys:
+            out.append({
+                "topic": t.id, "stale_years": ys,
+                "fix": f"python src/build_dynasty_map.py --topic {t.id} --all-years --force",
+            })
+    return out
 
 
 def _dynasty_geometry(topic: Topic, year: int) -> dict:
@@ -368,10 +462,24 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str) -> Image.Ima
         regions.append(Region(
             id=pr["id"], name=pr["name"], rings=rings, color=pr["color"],
             label_pos=(pr["label_lon"], pr["label_lat"]) if pr.get("label_lon") else None,
-            props={"units": pr.get("units") or pr.get("zhou") or []}))
+            props={"units": pr.get("units") or pr.get("zhou") or [],
+                   "owner": pr.get("owner") or pr["name"]}))
     regions.sort(key=lambda r: -len(r.rings))
+    # 分朝代号（北宋/南宋）写在控制表里，标题按年显示 —— 不在这里硬编码朝代名
+    era = _topic_json(topic).get("_era") or {}
+    sub = f"{era.get(str(year))} · {topic.subtitle}" if era.get(str(year)) else topic.subtitle
     fr = Frame(year=year, regions=regions,
-               title=f"{topic.title} · {year} 年", subtitle=topic.subtitle)
+               title=f"{topic.title} · {year} 年", subtitle=sub)
+
+    # 图例：标题写着「颜色为所属政权」却不给图例，观众没法对照。
+    # 按面上首次出现的顺序列政权（顺序即控制表里写的顺序），不硬编码任何政权名。
+    legend, seen_owner = [], set()
+    for r in regions:
+        own = (r.props or {}).get("owner") or r.name
+        if own in seen_owner:
+            continue
+        seen_owner.add(own)
+        legend.append((own, r.color))
 
     W, H, mode = _sizes(size)
     style = Style.from_dict({
@@ -382,11 +490,14 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str) -> Image.Ima
                    "halo_width": 4, "min_area_ratio": 0.0006},
         "title_style": {"size": 50, "color": "#241f1a",
                         "subtitle_size": 24, "subtitle_color": "#6b5f50"},
-        "legend": {"enabled": False}})
+        "legend": {"enabled": True, "position": "bottom-left",
+                   "size": 16, "max_items": 12}})
     lay = Layout(width=W, height=H, mode=mode, title_ratio=0.11, footer_ratio=0.07)
     r = Renderer(style, lay, projection="mercator", supersample=2)
-    img = r.render_frame(fr, bbox=topic.bbox)
-    note = gj.get("_meta", {}).get("method") or topic.source_note
+    img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
+                         legend_title="所属政权")
+    # 口径声明：控制表里的 _footer 比几何里那句更完整，优先用它
+    note = _topic_json(topic).get("_footer") or gj.get("_meta", {}).get("method") or topic.source_note
     if note:
         import make_ww2_video as M
         M.draw_footer(img, note, r, style)

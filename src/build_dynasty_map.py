@@ -203,6 +203,11 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
 
     # 归属方显示名（方镇表列名用初名，正文用后来的号）
     disp = raw.get("_display") or {}
+    # 配色覆盖：同色系政权靠调色板凑不出稳定区分时，直接在数据里点名要什么色。
+    # 例：北宋/南宋要同色（同一政权延续），金要和西夏的灰蓝拉开。
+    pal = raw.get("_palette") or {}
+    # 换色键：让「南宋」沿用「宋」的颜色，颜色跟政权走而不是跟名字走
+    ckey = raw.get("_color_key") or {}
 
     counties = load_counties()
     if not quiet:
@@ -260,11 +265,12 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
         if merge_by == "unit":
             us = [grp]
             name = disp.get(grp, grp)
-            color = stable_color(active.get(grp, grp), list(groups))
+            own = active.get(grp, grp)
+            color = pal.get(own) or stable_color(ckey.get(own, own), list(groups))
         else:
             us = sorted(u for u, o in active.items() if o == grp)
             name = disp.get(grp, grp)
-            color = stable_color(grp, list(groups))
+            color = pal.get(grp) or stable_color(ckey.get(grp, grp), list(groups))
         feats.append({
             "type": "Feature",
             "properties": {"id": name, "name": name, "color": color,
@@ -282,7 +288,13 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
                      "max_km": max_km,
                      "units_total": len(units), "units_matched": len(active),
                      "units_missing": missing,
-                     "counties_placed": placed, "counties_outside": far},
+                     "counties_placed": placed, "counties_outside": far,
+                     # 记下当时的输入指纹：控制表或坐标表改了但没重跑构建时，
+                     # 服务端能据此发现「图是旧的」并提醒，而不是让人对着旧图找 bug。
+                     "control_sha1": sha1_of(ctrl),
+                     "gazetteer_sha1": sha1_of(up),
+                     "built_from": {"control": os.path.basename(ctrl),
+                                    "units": os.path.basename(up)}},
            "features": feats}
     json.dump(out, open(dst, "w", encoding="utf-8"), ensure_ascii=False)
     if not quiet:
@@ -293,6 +305,17 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
     return dst
 
 
+def sha1_of(path: str) -> str:
+    """JSON 的**语义**指纹：重排键序、改缩进、动换行都不算变化。
+
+    和 topics._file_sha1 必须一致，否则服务端会把刚算好的图当成过期。
+    """
+    obj = json.load(open(path, encoding="utf-8"))
+    canon = json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                       separators=(",", ":")).encode("utf-8")
+    return hashlib.sha1(canon).hexdigest()[:16]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--topic", required=True)
@@ -301,6 +324,7 @@ def main():
     ap.add_argument("--max-km", type=float, default=260.0)
     ap.add_argument("--simplify", type=float, default=0.02)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--quiet", action="store_true", help="只报错误，不打印过程")
     ap.add_argument("--all-years", action="store_true",
                     help="构建该题材声明的全部年份")
     args = ap.parse_args()
@@ -311,10 +335,11 @@ def main():
         from histmap_server import topics as T
         t = T.get(args.topic)
         for y in (t.raw.get("years") or []):
-            build(args.topic, int(y), args.max_km, args.simplify, args.force)
-            print()
+            build(args.topic, int(y), args.max_km, args.simplify, args.force, args.quiet)
+            if not args.quiet:
+                print()
     else:
-        build(args.topic, args.year, args.max_km, args.simplify, args.force)
+        build(args.topic, args.year, args.max_km, args.simplify, args.force, args.quiet)
 
 
 if __name__ == "__main__":

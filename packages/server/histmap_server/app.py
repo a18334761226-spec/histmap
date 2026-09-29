@@ -76,7 +76,9 @@ STYLE_PRESETS = [
 # ════════════════════════════════════════════════════════════
 @app.get("/api/health")
 def health():
-    return {"ok": True, "topics": list(topics.load_topics()), "version": app.version}
+    return {"ok": True, "topics": list(topics.load_topics()), "version": app.version,
+            # 几何过期提示：改了控制表却没重跑构建时，这里点名是哪几年
+            "stale": topics.stale_report()}
 
 
 @app.get("/api/scenes")
@@ -200,91 +202,132 @@ class VideoReq(BaseModel):
     theme: str = "dark"
     size: str = "16x9"
     style: str = "none"
+    style_profile: dict | None = None
     fps: int = 24
-    hold: float = 0.30                        # 每帧停留秒数
-    max_frames: int = 60                      # 上限，防手滑出几千帧
+    hold: float = 0.30                        # 每个年份停留秒数
+    # 上限只用来兜住手滑（比如拿月份当区间滑到几万帧），不该成为常见区间的暗坑：
+    # 二战 1939–1945 有 146 个时间点，卡在 60 就是「界面说 146 张、实际只出 60 张」。
+    max_frames: int = 240
+    fade: float = 0.20                        # 交叉溶解时长
 
 
-def _video_job(jid: str, req: VideoReq):
+def pick_dates(scene_id: str, date_from: str, date_to: str, max_frames: int):
+    """在 [from, to] 之间挑出题材**真正支持**的日期点。
+
+    不是按天数均分 —— 每个题材能渲染的日期是离散的（唐只有 5 个年份，
+    二战有 146 个），按天数切会切出一堆渲染不了的日期。
+    """
+    ds = topics.get(scene_id).dates()
+    # 日期一律换算成序数再比。直接拿字符串比大小是错的：
+    # '980-01-01' > '1040-01-01'（逐字符 '9' > '1'），
+    # 会把 980 年这种三位数年份整个排到后面去，区间筛选全乱。
+    a, b = _days(date_from), _days(date_to)
+    lo, hi = min(a, b), max(a, b)
+    sel = [d for d in ds if lo <= _days(d) <= hi]
+    if not sel:
+        # 区间内一个都没有 → 退化成「离区间端点最近的那个」
+        sel = [min(ds, key=lambda d: min(abs(_days(d) - lo), abs(_days(d) - hi)))] if ds else []
+    if len(sel) > max_frames:                 # 均匀抽稀，保留首尾
+        step = (len(sel) - 1) / (max_frames - 1)
+        sel = [sel[round(i * step)] for i in range(max_frames)]
+    return sel
+
+
+def _days(d: str) -> int:
+    """日期 → 序数。容忍 '807' / '807-1-1' / '0807-01-01' 各种写法。"""
+    from datetime import date as _d
+    parts = [p for p in str(d)[:10].split("-") if p != ""]
+    y = int(parts[0])
+    m = int(parts[1]) if len(parts) > 1 else 1
+    dd = int(parts[2]) if len(parts) > 2 else 1
+    try:
+        return _d(y, m, dd).toordinal()
+    except ValueError:                     # 月份/日越界（脏数据）→ 夹到合法范围
+        return _d(y, max(1, min(12, m)), max(1, min(28, dd))).toordinal()
+
+
+def _animate_job(jid: str, req: VideoReq):
+    """先出**全部**图片（逐张落盘、逐张上报），最后才合成视频。
+
+    用户要的就是这个顺序：先看到每一帧，最后才是片子。
+    所以帧是写到 jobs/<id>/frames/ 的，前端可以边渲染边显示缩略图。
+    """
     import subprocess
     import make_ww2_video as M
-    from datetime import date as _d, timedelta
 
     sc = topics.get(req.scene)
-    jobs.update(jid, status="running", message="准备中")
     out_dir = jobs.job_dir(jid)
+    fdir = os.path.join(out_dir, "frames")
+    os.makedirs(fdir, exist_ok=True)
     mp4 = os.path.join(out_dir, "video.mp4")
 
-    d0, d1 = _d.fromisoformat(req.date_from), _d.fromisoformat(req.date_to)
-    if d1 < d0:
-        d0, d1 = d1, d0
-    # 均匀取点，避免手滑传一个 20 年的区间
-    total_days = max(1, (d1 - d0).days)
-    n = min(req.max_frames, max(2, total_days // 30 + 1))
-    dates = [d0 + timedelta(days=round(total_days * i / max(1, n - 1)))
-             for i in range(n)]
+    dates = pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)
+    if not dates:
+        jobs.update(jid, status="failed", error="这个区间里没有可渲染的日期")
+        return
+    jobs.update(jid, status="running", total=len(dates), frames=[],
+                message=f"准备渲染 {len(dates)} 张")
 
-    W, H = (1920, 1080) if req.size == "16x9" else (1080, 1920)
+    # ── 1) 逐张出图 ──
+    urls, paths = [], []
+    for i, d in enumerate(dates):
+        img = topics.render(req.scene, d, req.theme, req.size)
+        img = _apply_quality(img, RenderReq(scene=req.scene, date=d, theme=req.theme,
+                                            size=req.size, style=req.style,
+                                            style_profile=req.style_profile))
+        p = os.path.join(fdir, f"{i:04d}.png")
+        img.save(p)
+        paths.append(p)
+        urls.append(f"/media/jobs/{jid}/frames/{i:04d}.png")
+        jobs.update(jid, frames=list(urls),
+                    progress=round((i + 1) / len(dates) * 0.85, 3),
+                    message=f"出图 {i+1}/{len(dates)} · {d[:10]}")
+
+    # ── 2) 合成视频 ──
+    jobs.update(jid, message="合成视频…", progress=0.9)
     ff = M.find_ffmpeg()
+    errf = open(os.path.join(out_dir, "ffmpeg.log"), "w",
+                encoding="utf-8", errors="replace")
+    # 每张图在片子里停留 req.hold 秒：
+    # 把**输入**帧率设成 1/hold，输出帧率设成 fps，ffmpeg 会自动补帧。
+    # （直接把输入输出都设成 fps 的话，每张只闪 1/fps 秒，等于没有停留）
+    in_fps = max(0.05, 1.0 / max(0.05, req.hold))
     cmd = [ff, "-y", "-loglevel", "error",
-           "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
-           "-r", str(req.fps), "-i", "-",
+           "-framerate", f"{in_fps:.4f}",
+           "-i", os.path.join(fdir, "%04d.png"),
+           "-r", str(req.fps),
            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
            "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4]
-    errf = open(os.path.join(out_dir, "ffmpeg.log"), "w", encoding="utf-8",
-                errors="replace")
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=errf)
-
-    hold_n = max(1, int(req.hold * req.fps))
-    written = 0
-    frames = []
-    for i, d in enumerate(dates):
-        img = topics.render(req.scene, d.isoformat(), req.theme, req.size)
-        img = _apply_quality(img, RenderReq(scene=req.scene, date=d.isoformat(),
-                                            theme=req.theme, size=req.size,
-                                            style=req.style))
-        frames.append(img)
-        jobs.update(jid, progress=round((i + 1) / len(dates) * 0.7, 3),
-                    message=f"渲染 {i+1}/{len(dates)}")
-    # 补帧 + 交叉溶解（与脚本一致：动静跟着史料走，这里简化为定长停留）
-    prev = None
-    for i, img in enumerate(frames):
-        if prev is not None:
-            for k in range(1, 4):
-                proc.stdin.write(Image.blend(prev, img, k / 4).tobytes())
-                written += 1
-        for _ in range(hold_n):
-            proc.stdin.write(img.tobytes())
-            written += 1
-        prev = img
-        jobs.update(jid, progress=0.7 + (i + 1) / len(frames) * 0.25,
-                    message=f"编码 {i+1}/{len(frames)}")
-    for _ in range(req.fps):                  # 结尾定格 1 秒
-        proc.stdin.write(prev.tobytes())
-        written += 1
-    proc.stdin.close()
-    rc = proc.wait()
+    rc = subprocess.call(cmd, stderr=errf)
     errf.close()
-
     ok, why = M.verify_mp4(ff, mp4)
     if rc != 0 or not ok:
-        jobs.update(jid, status="failed",
-                    error=f"ffmpeg rc={rc}；{why}")
+        jobs.update(jid, status="failed", error=f"ffmpeg rc={rc}；{why}")
         return
+    secs = round(len(urls) * req.hold, 1)
     jobs.update(jid, status="done", progress=1.0, message="完成",
                 result={"video": f"/media/jobs/{jid}/video.mp4",
-                        "frames": written, "seconds": round(written / req.fps, 1),
-                        "size": req.size, "n_keyframes": len(frames),
-                        "verify": why})
+                        "frames": urls, "n_frames": len(urls),
+                        "seconds": secs, "size": req.size, "verify": why})
 
 
 @app.post("/api/video")
 def api_video(req: VideoReq):
     if not topics.get(req.scene):
-        raise HTTPException(404, "没有这个场景")
-    jid = jobs.new_job("video", req.model_dump())
-    jobs.run_async(_video_job, jid, req, jid=jid)
-    return {"job": jid}
+        raise HTTPException(404, "没有这个题材")
+    jid = jobs.new_job("animate", req.model_dump(exclude={"style_profile"}))
+    # jid 只走位置参数。早先写成 run_async(fn, jid, req, jid=jid)，
+    # 同一个 jid 传了两次 → TypeError: got multiple values for argument 'jid'，
+    # 视频这条路从第一版起就是坏的（当时没测到）。
+    jobs.run_async(_animate_job, jid, req)
+    sel = pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)
+    # 截断了就明说，别让界面显示的数字和实际出的帧数对不上
+    lo, hi = sorted((_days(req.date_from), _days(req.date_to)))
+    in_range = sum(1 for d in (topics.get(req.scene).dates() or []) if lo <= _days(d) <= hi)
+    note = (f"区间内 {in_range} 个时间点，超过上限 {req.max_frames}，"
+            f"已均匀抽稀为 {len(sel)} 帧" if in_range > len(sel) else "")
+    return {"job": jid, "n_dates": len(sel), "in_range": in_range,
+            "max_frames": req.max_frames, "note": note}
 
 
 @app.get("/api/jobs")
@@ -323,6 +366,11 @@ SYS_PROMPT = """你是历史地图生成器的意图解析器。用户用中文�
 规则：
 - state 必须是**完整参数**（在用户旧参数基础上改），不是只返回改动的字段。
 - 日期必须落在该场景支持的范围内，且用 YYYY-MM-DD 格式。
+- 场景对象里给了 supported_dates 的，date **必须从里面原样挑一个最近的**，
+  绝不允许自造年份。例：「唐宪宗二年」＝元和二年＝807 年，应选 807-01-01。
+- 场景对象标了 any_date_in_range 的，date 可以自由给，但要落在 date_range 内。
+- 用户只说「换成宋朝/唐朝」这类**只换场景**的要求时，date 用该场景的 default_date，
+  不要顺手把日期也改成别的。
 - 用户说「出个视频」「做成视频」→ action="video"；否则 action="render"。
 - 用户只是问问题、没要求改参数 → action=null，state 原样返回。
 - 拿不准的时候不要瞎编日期，用当前值。"""
@@ -342,15 +390,30 @@ def api_chat(req: ChatReq, x_api_key: str | None = Header(None, alias="X-Api-Key
         raise HTTPException(401, "还没填 API Key —— 右上角设置里填一个（如硅基流动的 sk-…）")
 
     
-    # 场景清单里的 dates 太长，只留范围
+    # 场景清单：把**真能渲染的日期**给模型，否则它会自己编。
+    # 实测：问「唐宪宗二年」，不给清单时模型答 805-01-01（宪宗二年实为元和二年＝807），
+    # 而 805 不在唐图的年份里，点渲染直接报「缺少几何」。
     slim = []
     for s in topics.list_topics():
         ds = s["dates"]
-        slim.append({"id": s["id"], "title": s["title"], "desc": s["desc"],
-                     "themes": s["themes"],
-                     "date_range": [ds[0], ds[-1]] if ds else None,
-                     "n_dates": len(ds),
-                     "recommended_size": "4x3" if s["id"] == "tang" else "16x9"})
+        t = topics.get(s["id"])
+        item = {"id": s["id"], "title": s["title"],
+                "desc": s.get("subtitle") or "",
+                "themes": s["themes"],
+                "date_range": [ds[0], ds[-1]] if ds else None,
+                "default_date": s.get("default_date"),
+                "n_dates": len(ds),
+                # 推荐尺寸也来自题材数据，不在这里按题材名写死
+                "recommended_size": s.get("default_size") or "16x9"}
+        if t and t.kind == "dynasty":
+            # 逐年离散（唐 5 个年份、宋 6 个），必须从这里面挑
+            item["supported_dates"] = ds
+            item["date_note"] = "只能从 supported_dates 里原样选一个，禁止自造年份"
+        else:
+            item["any_date_in_range"] = True
+            item["date_note"] = ("区间内任意 YYYY-MM-DD 都可以。"
+                                 "用户说年号/事件时取该事件当月或当日的日期")
+        slim.append(item)
     prompt = SYS_PROMPT.format(scenes=json.dumps(slim, ensure_ascii=False),
                                state=json.dumps(req.state, ensure_ascii=False))
 
@@ -376,14 +439,79 @@ def api_chat(req: ChatReq, x_api_key: str | None = Header(None, alias="X-Api-Key
     except Exception as e:
         raise HTTPException(502, f"连不上模型服务: {e}")
 
+    txt = ""
     try:
         txt = data["choices"][0]["message"]["content"]
-        parsed = json.loads(txt)
-    except Exception:
-        raise HTTPException(502, f"模型没按 JSON 回：{(txt or '')[:300]}")
+        parsed = json.loads(strip_fence(txt))
+    except Exception as e:
+        # txt 必须先在循环外初始化：否则这里会 NameError，
+        # 用户看到的是 500，而不是「模型没按 JSON 回」这句能自救的话。
+        raise HTTPException(502, f"模型没按 JSON 回（{type(e).__name__}）：{txt[:300]}")
     parsed.setdefault("action", None)
     parsed.setdefault("state", req.state)
+    return sanitize_chat(parsed, req.state)
+
+
+def sanitize_chat(parsed: dict, old_state: dict) -> dict:
+    """把模型吐出来的参数夹回真实可渲染的范围。
+
+    模型给错日期是常态（「唐宪宗二年」答成 805，唐图只有 763/780/807/820/875）。
+    只靠提示词约束不牢靠，所以这里再兜一层：题材不认识就退回旧值，
+    日期不在可渲染集合里就吸附到最近的一个，并且**如实告诉用户改成了什么**。
+    """
+    st = dict(old_state or {})
+    if not isinstance(parsed.get("state"), dict):
+        parsed["state"] = st
+        return parsed
+    st.update(parsed["state"])
+
+    fixes = []
+    t = topics.get(str(st.get("scene") or ""))
+    if not t:
+        if old_state.get("scene"):
+            fixes.append(f"没有「{st.get('scene')}」这个题材")
+            st["scene"] = old_state["scene"]
+            t = topics.get(str(st["scene"]))
+
+    if t:
+        ds = t.dates() or []
+        want = str(st.get("date") or "")
+        if ds:
+            if want not in ds:
+                try:
+                    target = _days(want) if want else None
+                except Exception:
+                    target = None
+                pick = (min(ds, key=lambda d: abs(_days(d) - target)) if target is not None
+                        else (t.default_date() or ds[0]))
+                fixes.append(f"{want or '（空日期）'} → {pick}")
+                st["date"] = pick
+        if st.get("theme") not in t.themes:
+            st["theme"] = t.themes[0]
+        if st.get("size") not in ("16x9", "9x16", "4x3", "1x1"):
+            st["size"] = t.default_size or "16x9"
+
+    parsed["state"] = st
+    if fixes:
+        note = "（已校正：" + "；".join(fixes) + "）"
+        parsed["reply"] = (parsed.get("reply") or "").rstrip() + note
+        parsed["corrected"] = fixes
     return parsed
+
+
+def strip_fence(t: str) -> str:
+    """有些模型会把 JSON 包在 ```json 围栏里，剥掉再解析。
+
+    这跟 response_format=json_object 不冲突 —— 实测仍会偶发。
+    """
+    s = (t or "").strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[1] if "\n" in s else s
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+        if s.lstrip().startswith("json"):
+            s = s.lstrip()[4:]
+    return s.strip()
 
 
 # ════════════════════════════════════════════════════════════
@@ -402,5 +530,12 @@ def index():
 
 if __name__ == "__main__":
     import uvicorn
+    # 启动自检：几何过期就在日志里点名，别让人对着旧图排查半天
+    for s in topics.stale_report():
+        if "error" in s:
+            print(f"[自检] {s['topic']} 检查失败：{s['error']}")
+        else:
+            print(f"[自检] {s['topic']} 有 {len(s['stale_years'])} 年的几何是旧的"
+                  f"（{s['stale_years']}）。重跑：{s['fix']}")
     port = int(os.environ.get("PORT") or 8810)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")

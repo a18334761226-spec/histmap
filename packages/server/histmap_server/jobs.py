@@ -61,6 +61,12 @@ def list_jobs():
 
 
 def run_async(fn, *args, **kwargs):
+    """后台跑一个任务。约定：**第一个位置参数就是 job id**。
+
+    不要把 jid 同时按位置和关键字传进来 —— 会报
+    `got multiple values for argument`（踩过，而且因为没测这个接口，
+    一直没发现）。
+    """
     t = threading.Thread(target=_guard, args=(fn, args, kwargs), daemon=True)
     t.start()
     return t
@@ -71,7 +77,7 @@ def _guard(fn, args, kwargs):
         fn(*args, **kwargs)
     except Exception as e:
         traceback.print_exc()
-        jid = kwargs.get("jid") or (args[0] if args else None)
+        jid = args[0] if args and isinstance(args[0], str) else kwargs.get("jid")
         if isinstance(jid, str):
             update(jid, status="failed", error=f"{type(e).__name__}: {e}")
 

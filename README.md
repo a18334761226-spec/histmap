@@ -62,9 +62,14 @@
 
 ```bash
 git clone <repo> && cd history-map
-pip install pillow numpy pyyaml imageio-ffmpeg shapely zhconv
+pip install pillow numpy pyyaml imageio-ffmpeg shapely zhconv fastapi uvicorn python-multipart httpx
 
-# 0. 拉数据（数据集不进仓库）
+# ── Web 应用（推荐先跑这个，clone 下来就能用）──
+set PYTHONPATH=packages\server;packages\core;src
+python -m histmap_server.app          # 打开 http://127.0.0.1:8810
+python src/smoke_api.py --video       # 全线自检：每个接口都真跑一遍
+
+# 0. 拉数据（可再下载的大件不进仓库；clone 后无需执行也能跑唐宋）
 set HTTPS_PROXY=http://127.0.0.1:7897     # 国内直连 GitHub 很慢
 python src/fetch_data.py --all
 
@@ -76,6 +81,9 @@ python src/build_tang_gazetteer.py  # 唐州治所坐标表（329 条）
 python src/check_gazetteer.py data/processed/tang_zhou_gazetteer.json   # 逐点几何校验
 python src/build_tang_map.py --year 807         # 县 → 州 → 藩镇
 python src/render_tang.py --year 807 --size 4x3 # 出图
+
+# ── 宋代（路制）──
+python src/build_dynasty_map.py --topic song --all-years --force
 
 # ── 二战 ──
 python src/still.py --date 1942-11-01 --theme light
@@ -90,6 +98,36 @@ python src/gen_golden.py && node web/verify.mjs   # 两端投影一致性门禁
 # ── 演示页 ──
 # 打开 site/index.html
 ```
+
+### 哪些数据在仓库里，哪些不在
+
+原则：**能重新下回来的不进仓库，重新造不出来的必须进。**
+
+| 文件 | 进仓库 | 理由 |
+| --- | --- | --- |
+| `data/topics/topics.json` | ✅ | 题材定义即产品配置 |
+| `data/control/*.json` | ✅ | 控制表是史实结论，手工校订的 |
+| `data/raw/juan0*.json` | ✅ | 《新唐书·方镇表》卷 64–69 原文（公有领域）。再抓一次成本高且站点可能变 |
+| `data/processed/song_lu_gazetteer.json` | ✅ | 宋·路制单元坐标表，**没有任何脚本能重新生成** |
+| `data/processed/tang_fanzhen_timeline.json` | ✅ | 藩镇逐年隶属，含手工 `_display`/`_footer` 覆盖层 |
+| `data/processed/*_map.geojson` | ✅ | 已经算好的逐年几何。不带上它，clone 后唐宋 `dates()` 返回空、点开是空白页 |
+| `data/cache/gb_*.geojson` | ❌ | geoBoundaries 下载件，12 MB，`fetch_data.py` 可取 |
+| `data/processed/fangzhen_raw.json`、`ops_807.json`、`*_probe.json` | ❌ | 中间产物/探针输出，可重跑 |
+
+改了 `data/control/*.json` 之后，几何不会自动跟着变，必须重跑：
+
+```bash
+python src/build_dynasty_map.py --topic <id> --all-years --force
+```
+
+忘了跑也不会悄悄错下去——服务启动时和 `GET /api/health` 都会点名哪几年是旧的：
+
+```
+[自检] song 有 6 年的几何是旧的（[980, 1040, 1080, 1120, 1140, 1200]）。
+       重跑：python src/build_dynasty_map.py --topic song --all-years --force
+```
+
+判定用的是**语义**指纹（解析后的 JSON 规范化哈希），只改缩进或换行不会误报。
 
 ---
 
@@ -196,6 +234,13 @@ docs/                          设计稿与实测记录
 - **唐代几何是重建的，不是史料记载的界线。** 行政层级古今不对应，
   归属判据是「县治到州治直线距离最近」。用于示意/教学/短视频可以，
   **学术引用请另找权威来源**。
+- **宋代同理**，而且路是**顶层行政区**（约当今省），比唐的州县粗一档；
+  辽、金、西夏只按大区治所单列，不是完整的路/道体系。
+- **宋金边界只取通行分期。** 京西南路（治襄阳）跨在绍兴和议的
+  淮河—大散关界上，本图按襄阳属南宋处理，邓州、唐州等地不细分。
+  1120 年按女真已取辽上京道（1120）、东京道（1117）处理，故辽只剩三京道。
+- **980 年不出现西夏**（西夏 1038 年才建国），此时兴庆府一带按定难军属宋、
+  河西走廊按吐蕃六部与回鹘合称「河西诸部」示意。
 - **唐州治坐标表是 AI 重建 + 几何校验**（329 条全部落在真实县境内），
   但不是权威测绘数据。
 - 方镇表解析仍有长尾误差：约 24 个州名未能定位；别名重复
@@ -211,7 +256,8 @@ docs/                          设计稿与实测记录
 
 **代码 MIT**（见 LICENSE）。
 
-**数据集不入库**，一律走 `src/fetch_data.py` 下载器模式：
+**能重新下回来的数据不入库**（见上文「哪些数据在仓库里」表格）——大件走
+`src/fetch_data.py` 下载器模式，重生不出来的源数据（宋路制坐标表、新唐书原文）进仓库：
 
 | 数据源 | 许可 | 可商用 | 用途 |
 |---|---|---|---|
@@ -220,7 +266,8 @@ docs/                          设计稿与实测记录
 | CShapes 2.0 | 学术引用要求；**商用条款未确认** | ⚠️ | 近现代国界 |
 | AtlasPI | Apache-2.0 | ✓ | 宏观索引（几何质量低） |
 | 《新唐书·方镇表》 | 公有领域（古籍） | ✓ | 唐代 |
-| 唐州治所坐标表 | 本项目重建 | ✓ | 唐代 |
+| 《宋史·地理志》 | 公有领域（古籍） | ✓ | 宋代 |
+| 唐州治所坐标表 / 宋路制坐标表 | 本项目重建 | ✓ | 唐、宋 |
 
 ### 明确排除的数据源
 

@@ -104,6 +104,29 @@
     margin:12px auto 0;max-width:340px}
   .bar i{display:block;height:100%;background:var(--accent);width:0;transition:.3s}
 
+  /* ── 画廊（先出图，最后才是视频） ── */
+  .galleryWrap{width:100%;height:100%;display:flex;flex-direction:column;
+    min-height:0;padding:4px 2px}
+  .gline{display:flex;align-items:center;gap:10px;font-size:13.5px;
+    color:var(--ink2);margin-bottom:6px}
+  .gline b{color:var(--ink)}
+  .gline .pct{margin-left:auto;font-family:var(--mono);font-size:12px}
+  .gallery{flex:1;min-height:0;overflow-y:auto;display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;
+    margin-top:12px;align-content:start}
+  .cell{margin:0;border:1px solid var(--line);border-radius:4px;overflow:hidden;
+    background:#fff;position:relative;aspect-ratio:4/3}
+  .cell img{width:100%;height:100%;object-fit:cover;display:block}
+  .cell figcaption{position:absolute;left:0;bottom:0;background:rgba(20,16,12,.72);
+    color:#f0e9dc;font-size:10.5px;padding:1px 6px;border-radius:0 3px 0 0;
+    font-family:var(--mono)}
+  .cell.ph{background:#e9e1d0;display:flex;align-items:center;justify-content:center}
+  .cell.bad{background:#f3ded8;border-color:#c9a08f}
+  .spin{width:16px;height:16px;border:2px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
+  .galleryWrap video{width:100%;max-height:46%;border-radius:4px;background:#000}
+  select.mini{padding:4px 6px;font-size:12.5px;min-width:0;flex:1}
+
   /* ── 设置弹层 ── */
   .mask{position:fixed;inset:0;background:rgba(20,16,12,.5);display:none;
     align-items:center;justify-content:center;z-index:50}
@@ -156,11 +179,19 @@
       <h3>参数</h3>
       <div class="params">
         <div class="f"><label>场景</label><select id="pScene"></select></div>
-        <div class="f"><label>日期</label>
+        <div class="f"><label>单张</label>
           <div class="daterow">
             <input type="range" id="pDate" min="0" max="0" value="0">
             <span class="d" id="pDateLbl">—</span>
           </div>
+        </div>
+        <div class="f"><label>区间</label>
+          <div class="daterow">
+            <select id="pFrom" class="mini"></select>
+            <span style="color:var(--ink2)">→</span>
+            <select id="pTo" class="mini"></select>
+          </div>
+          <div id="rangeHint" style="grid-column:2;font-size:11.5px;color:var(--ink2)"></div>
         </div>
         <div class="f"><label>主题</label><select id="pTheme"></select></div>
         <div class="f"><label>质感</label><select id="pStyle"></select></div>
@@ -190,16 +221,15 @@
   <!-- 结果 -->
   <div class="stage">
     <div class="toolbar">
-      <button class="btn primary" id="btnRender">生成图片</button>
-      <button class="btn" id="btnVideo">用这张图出视频</button>
-      <button class="btn" id="btnRetry" style="display:none">重试</button>
+      <button class="btn" id="btnRender">只出这一张</button>
+      <button class="btn primary" id="btnRun">出区间全部图片 → 视频</button>
       <span class="meta" id="meta"></span>
     </div>
     <div class="view" id="view">
       <div class="empty">
         <b>还没有结果</b>
-        左边说一句话，或直接点「生成图片」。<br>
-        <span style="font-size:13px">比如：「唐宪宗二年的军阀格局图」</span>
+        左边选一个年份区间，点「出区间全部图片 → 视频」。<br>
+        <span style="font-size:13px">它会先逐张出图给你看，全部出完才合成视频。</span>
       </div>
     </div>
   </div>
@@ -241,19 +271,31 @@
 <script>
 const $ = s => document.querySelector(s);
 const api = (p, opt={}) => {
-  const h = Object.assign({'Content-Type':'application/json'}, opt.headers||{});
+  const h = Object.assign({}, opt.headers||{});
+  // FormData 必须让浏览器自己设 Content-Type（带 boundary），
+  // 手写 application/json 会把 multipart 上传搞坏（踩过：报 [object Object]）
+  if (!(opt.body instanceof FormData)) h['Content-Type'] = 'application/json';
   const cfg = JSON.parse(localStorage.getItem('histmap.cfg') || '{}');
   if (cfg.key) h['X-Api-Key'] = cfg.key;
   if (cfg.chat) h['X-Model'] = cfg.chat;
   if (cfg.base) h['X-Base-Url'] = cfg.base;
   return fetch(p, Object.assign({}, opt, {headers: h}));
 };
+/** 统一的错误提取：FastAPI 的 422 返回的是对象数组，直接拼会变成 [object Object] */
+function errText(detail, fallback){
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map(d => d.msg || d.message || JSON.stringify(d)).join('；');
+  if (typeof detail === 'object') return detail.msg || detail.message || JSON.stringify(detail);
+  return String(detail);
+}
 let toastT;
 function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
   clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('on'), 2600);
 }
-const busy = (b) => { $('#btnRender').disabled = b; $('#btnSend').disabled = b; };
+const busy = (b) => { $('#btnRender').disabled = b; $('#btnRun').disabled = b;
+                      $('#btnSend').disabled = b; };
 
 // ── 状态 ──
 let SCENES = [], STYLES = [], state = {}, styleProfile = null, lastImage = null;
@@ -306,6 +348,17 @@ $('#sClear').onclick = () => {
 $('#mask').onclick = e => { if (e.target.id === 'mask') $('#mask').classList.remove('on'); };
 
 // ── 参数同步 ──
+const ym = d => (d || '').slice(0, 4) + ' 年';
+
+function fillRange(ds){
+  const opts = ds.map((d, i) => `<option value="${i}">${ym(d)}</option>`).join('');
+  $('#pFrom').innerHTML = opts;
+  $('#pTo').innerHTML = opts;
+  const cur = Math.max(0, ds.indexOf(state.date));
+  $('#pFrom').value = state.fromIdx != null ? state.fromIdx : 0;
+  $('#pTo').value = state.toIdx != null ? state.toIdx : ds.length - 1;
+}
+
 function syncUI(){
   $('#pScene').value = state.scene;
   const sc = SCENES.find(s => s.id === state.scene);
@@ -314,22 +367,41 @@ function syncUI(){
   const r = $('#pDate');
   r.max = Math.max(0, ds.length - 1); r.value = i;
   $('#pDateLbl').textContent = state.date || '—';
+  fillRange(ds);
   $('#pTheme').innerHTML = (sc?sc.themes:['dark'])
     .map(t => `<option value="${t}">${t==='dark'?'深色（短视频）':'浅色（古籍）'}</option>`).join('');
   $('#pTheme').value = state.theme;
   $('#pStyle').value = state.style || 'none';
   $('#pSize').value = state.size || (sc?sc.default_size:'16x9');
+  updateRangeHint();
   // 出处与口径：题材是数据，来源说明也写在数据里
   const note = sc ? (sc.source_note || '') : '';
   $('#srcNote').textContent = note;
   $('#srcNote').style.display = note ? 'block' : 'none';
 }
+function updateRangeHint(){
+  const sc = SCENES.find(s => s.id === state.scene);
+  const ds = sc ? sc.dates : [];
+  const a = Number($('#pFrom').value), b = Number($('#pTo').value);
+  const n = Math.max(0, b - a + 1);
+  const MAX_FRAMES = 240;   // 与 doRun / 服务端一致
+  $('#btnRun').textContent = n > 1 ? `出 ${Math.min(n, MAX_FRAMES)} 张图 → 视频`
+                                   : '出区间全部图片 → 视频';
+  $('#rangeHint').textContent = n <= 0 ? '区间只覆盖一个时间点'
+    : n > MAX_FRAMES
+      ? `${ym(ds[a])} → ${ym(ds[b])}，共 ${n} 个时间点，超出上限 ${MAX_FRAMES}，将均匀抽稀`
+      : `${ym(ds[a])} → ${ym(ds[b])}，共 ${n} 张`;
+}
 function pullUI(){
   const sc = SCENES.find(s => s.id === $('#pScene').value);
   const ds = sc ? sc.dates : [];
+  const a = Number($('#pFrom').value), b = Number($('#pTo').value);
   state = {
     scene: $('#pScene').value,
     date: ds[Number($('#pDate').value)] || state.date,
+    fromIdx: Math.min(a, b), toIdx: Math.max(a, b),
+    from_date: ds[Math.min(a, b)] || ds[0],
+    to_date: ds[Math.max(a, b)] || ds[ds.length - 1],
     theme: $('#pTheme').value,
     style: $('#pStyle').value,
     size: $('#pSize').value,
@@ -351,7 +423,7 @@ async function doRender(){
     if (styleProfile && $('#useStyle')?.checked !== false) body.style_profile = styleProfile;
     const r = await api('/api/render', {method:'POST', body: JSON.stringify(body)});
     const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || '渲染失败');
+    if (!r.ok) throw new Error(errText(j.detail, '渲染失败'));
     lastImage = j;
     $('#view').innerHTML =
       `<img src="${j.image}?t=${Date.now()}" alt="结果"
@@ -361,43 +433,84 @@ async function doRender(){
          <span style="font-size:12px;color:var(--ink2)">服务端产出了文件但取不到 —— 检查服务是否还在跑</span>
        </div>`;
     $('#meta').textContent = `${j.width}×${j.height} · 渲染 ${j.elapsed}s`;
-    $('#btnVideo').disabled = false;
     addMsg('assistant', `好了（${j.elapsed}s）。`, `${state.scene} · ${state.date} · ${state.theme} · ${state.style}`);
   }catch(e){ toast(e.message); showLoading('出错了：' + e.message); }
   finally{ busy(false); }
 }
 
-// ── 视频 ──
-async function doVideo(){
+// ── 区间：先出全部图片，最后合成视频 ──
+let galleryTimer = null;
+
+function showGallery(frames, total, msg, prog){
+  if (galleryTimer) clearTimeout(galleryTimer);
+  const have = frames.length;
+  const cells = frames.map((u, i) =>
+    `<figure class="cell"><img src="${u}?t=${Date.now()}" loading="lazy"
+       onerror="this.parentNode.classList.add('bad')">
+     <figcaption>${i+1}</figcaption></figure>`).join('');
+  const blanks = Math.max(0, total - have);
+  const ph = Array.from({length: blanks}, () =>
+    `<figure class="cell ph"><div class="spin"></div></figure>`).join('');
+  $('#view').innerHTML =
+    `<div class="galleryWrap">
+       <div class="gline">${esc(msg||'')}
+         ${prog!=null?`<span class="pct">${Math.round(prog*100)}%</span>`:''}</div>
+       <div class="bar"><i style="width:${Math.round((prog||0)*100)}%"></i></div>
+       <div class="gallery">${cells}${ph}</div>
+     </div>`;
+}
+
+async function doRun(){
   pullUI();
-  const sc = SCENES.find(s => s.id === state.scene);
-  const ds = sc ? sc.dates : [];
-  const i = ds.indexOf(state.date);
-  const from = ds[Math.max(0, i - 8)] || ds[0], to = ds[Math.min(ds.length-1, i + 8)] || ds[ds.length-1];
-  busy(true); showLoading('提交视频任务…');
+  const n = state.to_idx - state.from_idx + 1;
+  if (n <= 0){ toast('区间不合法：结束年份要晚于开始年份'); return; }
+  busy(true);
+  // 上限跟服务端 VideoReq.max_frames 保持一致；不要各自写一个数，
+  // 不然按钮上说 146 张、实际只出 60 张（踩过）。
+  const MAX_FRAMES = 240;
+  const want = Math.min(n, MAX_FRAMES);
+  showGallery([], want, '提交任务…', 0);
   try{
     const r = await api('/api/video', {method:'POST', body: JSON.stringify({
-      scene: state.scene, date_from: from, date_to: to,
-      theme: state.theme, size: state.size === '4x3' ? '16x9' : state.size,
-      style: state.style, fps: 24, hold: 0.3, max_frames: 40})});
+      scene: state.scene, date_from: state.from_date, date_to: state.to_date,
+      theme: state.theme, size: state.size, style: state.style,
+      style_profile: styleProfile || undefined,
+      fps: 24, hold: 0.45, max_frames: MAX_FRAMES})});
     const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || '提交失败');
+    if (!r.ok) throw new Error(errText(j.detail, '提交失败'));
     const jid = j.job;
-    addMsg('assistant', `视频任务已提交（${from} → ${to}），渲染需要一会儿。`, `任务 ${jid}`);
+    // 服务端实际会出 j.n_dates 帧，用它而不是本地算的 n
+    let msg = `开始出 ${j.n_dates} 张图（${state.from_date.slice(0,4)} → ${state.to_date.slice(0,4)}），出完自动合成视频。`;
+    if (j.note) msg += `　⚠ ${j.note}`;
+    if (j.note) toast(j.note);
+    addMsg('assistant', msg, `任务 ${jid}`);
+    let last = 0;
     while(true){
-      await new Promise(s => setTimeout(s, 1200));
+      await new Promise(s => setTimeout(s, 900));
       const st = await (await fetch('/api/jobs/' + jid)).json();
-      if (st.status === 'failed') throw new Error(st.error || '渲染失败');
-      showLoading(st.message || '处理中…', st.progress);
+      if (st.status === 'failed') throw new Error(errText(st.error, '渲染失败'));
+      const fr = st.frames || [];
+      if (fr.length !== last || st.status === 'done'){
+        last = fr.length;
+        showGallery(fr, st.total || j.n_dates, st.message, st.progress);
+      }
       if (st.status === 'done'){
         const v = st.result;
-        $('#view').innerHTML = `<video src="${v.video}?t=${Date.now()}" controls autoplay loop></video>`;
-        $('#meta').textContent = `${v.frames} 帧 · ${v.seconds}s · ${v.n_keyframes} 个关键帧`;
-        addMsg('assistant', `视频好了：${v.seconds} 秒 / ${v.n_keyframes} 个关键帧。`);
+        $('#view').innerHTML =
+          `<div class="galleryWrap">
+             <div class="gline"><b>${v.n_frames} 张图全部出完，视频已合成</b>
+               <span class="pct">${v.seconds}s · ${v.size}</span></div>
+             <video src="${v.video}?t=${Date.now()}" controls autoplay loop
+                    onerror="this.insertAdjacentHTML('afterend','<div style=color:#a33>视频加载失败</div>')"></video>
+             <div class="gallery">${v.frames.map((u,i)=>
+               `<figure class="cell"><img src="${u}" loading="lazy"><figcaption>${i+1}</figcaption></figure>`).join('')}</div>
+           </div>`;
+        $('#meta').textContent = `${v.n_frames} 张 · ${v.seconds}s · ${v.verify||''}`;
+        addMsg('assistant', `完成：${v.n_frames} 张图 + ${v.seconds} 秒视频。`);
         break;
       }
     }
-  }catch(e){ toast(e.message); showLoading('出错了：' + e.message); }
+  }catch(e){ toast(e.message); $('#view').innerHTML = `<div class="empty">出错了：${esc(e.message)}</div>`; }
   finally{ busy(false); }
 }
 
@@ -415,12 +528,12 @@ async function doChat(){
     const r = await api('/api/chat', {method:'POST', body: JSON.stringify({
       messages: history, state})});
     const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || '对话失败');
+    if (!r.ok) throw new Error(errText(j.detail, '对话失败'));
     wait.remove();
     addMsg('assistant', j.reply || '(无回复)');
     history.push({role:'assistant', content: j.reply || ''});
     if (j.state) { state = Object.assign(state, j.state); syncUI(); }
-    if (j.action === 'video') await doVideo();
+    if (j.action === 'video') await doRun();
     else if (j.action === 'render') await doRender();
   }catch(e){
     wait.remove(); toast(e.message);
@@ -444,7 +557,7 @@ async function uploadStyle(f){
   try{
     const r = await api('/api/style/extract', {method:'POST', body: fd, headers:{}});
     const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || '提取失败');
+    if (!r.ok) throw new Error(errText(j.detail, '提取失败'));
     styleProfile = j.profile;
     const pal = (j.profile.palette||[]).map(p =>
       `<i style="background:${p.hex}" title="${p.hex}"></i>`).join('');
@@ -481,14 +594,15 @@ async function uploadStyle(f){
 })();
 
 $('#btnRender').onclick = doRender;
-$('#btnVideo').onclick = doVideo;
+$('#btnRun').onclick = doRun;
 $('#btnSend').onclick = doChat;
 $('#chatIn').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doChat(); };
 $('#pScene').onchange = () => {
   const sc = SCENES.find(s => s.id === $('#pScene').value);
   state = {scene: sc.id, date: sc.default_date, theme: sc.themes[0],
-           style: state.style || 'none',
-           size: sc.default_size || '16x9'};
+           style: state.style || 'none', size: sc.default_size || '16x9',
+           fromIdx: 0, toIdx: sc.dates.length - 1,
+           from_date: sc.dates[0], to_date: sc.dates[sc.dates.length - 1]};
   syncUI();
 };
 $('#pDate').oninput = () => { const sc = SCENES.find(s=>s.id===state.scene);

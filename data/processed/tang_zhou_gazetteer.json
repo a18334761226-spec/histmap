@@ -1,0 +1,2982 @@
+{
+ "_source": "坐标按《新唐书·地理志》州县沿革对照今地名重建，并用 geoBoundaries CHN ADM2（PDDL 公有领域）逐点校验。**这是 AI 重建 + 几何验证的数据，不是权威测绘数据。**",
+ "_precision": "约 0.05°（≈5 km）",
+ "_license": "数据库权利放弃（与项目一致）；引用时请注明重建方法",
+ "batches": [
+  "关内道",
+  "河东道",
+  "河北道",
+  "河南道",
+  "山南道",
+  "淮南道",
+  "陇右道",
+  "江南道",
+  "剑南道",
+  "岭南道",
+  "黔中道",
+  "补遗"
+ ],
+ "points": [
+  {
+   "name": "京兆",
+   "name_trad": "京兆",
+   "lon": 108.94,
+   "lat": 34.26,
+   "modern": "西安",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "同",
+   "name_trad": "同",
+   "lon": 109.94,
+   "lat": 34.8,
+   "modern": "大荔",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "华",
+   "name_trad": "華",
+   "lon": 109.75,
+   "lat": 34.51,
+   "modern": "华州",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "商",
+   "name_trad": "商",
+   "lon": 109.94,
+   "lat": 33.87,
+   "modern": "商洛",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "岐",
+   "name_trad": "岐",
+   "lon": 107.4,
+   "lat": 34.52,
+   "modern": "凤翔",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "邠",
+   "name_trad": "邠",
+   "lon": 108.08,
+   "lat": 35.04,
+   "modern": "彬州",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "泾",
+   "name_trad": "涇",
+   "lon": 107.36,
+   "lat": 35.33,
+   "modern": "泾川",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "原",
+   "name_trad": "原",
+   "lon": 107.2,
+   "lat": 35.68,
+   "modern": "镇原",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宁",
+   "name_trad": "寧",
+   "lon": 107.92,
+   "lat": 35.5,
+   "modern": "宁县",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "庆",
+   "name_trad": "慶",
+   "lon": 107.88,
+   "lat": 36.0,
+   "modern": "庆城",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "鄜",
+   "name_trad": "鄜",
+   "lon": 109.38,
+   "lat": 35.98,
+   "modern": "富县",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "坊",
+   "name_trad": "坊",
+   "lon": 109.26,
+   "lat": 35.58,
+   "modern": "黄陵",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "丹",
+   "name_trad": "丹",
+   "lon": 110.17,
+   "lat": 36.05,
+   "modern": "宜川",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "延",
+   "name_trad": "延",
+   "lon": 109.49,
+   "lat": 36.6,
+   "modern": "延安",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "夏",
+   "name_trad": "夏",
+   "lon": 108.79,
+   "lat": 37.6,
+   "modern": "靖边",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "盐",
+   "name_trad": "鹽",
+   "lon": 107.6,
+   "lat": 37.59,
+   "modern": "定边",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "绥",
+   "name_trad": "綏",
+   "lon": 110.26,
+   "lat": 37.51,
+   "modern": "绥德",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "银",
+   "name_trad": "銀",
+   "lon": 109.29,
+   "lat": 37.96,
+   "modern": "横山",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "麟",
+   "name_trad": "麟",
+   "lon": 110.5,
+   "lat": 38.84,
+   "modern": "神木",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "胜",
+   "name_trad": "勝",
+   "lon": 111.19,
+   "lat": 40.28,
+   "modern": "托克托",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "丰",
+   "name_trad": "豐",
+   "lon": 109.9,
+   "lat": 40.84,
+   "modern": "五原",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "灵",
+   "name_trad": "靈",
+   "lon": 106.33,
+   "lat": 38.1,
+   "modern": "灵武",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "会",
+   "name_trad": "會",
+   "lon": 104.68,
+   "lat": 36.57,
+   "modern": "靖远",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宥",
+   "name_trad": "宥",
+   "lon": 107.98,
+   "lat": 38.18,
+   "modern": "鄂托克前旗",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "渭",
+   "name_trad": "渭",
+   "lon": 104.2,
+   "lat": 35.2,
+   "modern": "渭源",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "秦",
+   "name_trad": "秦",
+   "lon": 105.72,
+   "lat": 34.58,
+   "modern": "秦州/天水",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "成",
+   "name_trad": "成",
+   "lon": 105.3,
+   "lat": 33.45,
+   "modern": "成县",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "武",
+   "name_trad": "武",
+   "lon": 104.9,
+   "lat": 34.45,
+   "modern": "武都",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宕",
+   "name_trad": "宕",
+   "lon": 104.39,
+   "lat": 34.04,
+   "modern": "宕昌",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "叠",
+   "name_trad": "疊",
+   "lon": 103.2,
+   "lat": 34.1,
+   "modern": "迭部",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "洮",
+   "name_trad": "洮",
+   "lon": 103.35,
+   "lat": 34.68,
+   "modern": "临潭",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "岷",
+   "name_trad": "岷",
+   "lon": 104.03,
+   "lat": 34.43,
+   "modern": "岷县",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "临",
+   "name_trad": "臨",
+   "lon": 103.18,
+   "lat": 35.6,
+   "modern": "临夏",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "兰",
+   "name_trad": "蘭",
+   "lon": 103.83,
+   "lat": 36.06,
+   "modern": "兰州",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "河",
+   "name_trad": "河",
+   "lon": 102.48,
+   "lat": 35.5,
+   "modern": "临夏/河州",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "鄯",
+   "name_trad": "鄯",
+   "lon": 101.8,
+   "lat": 36.62,
+   "modern": "乐都",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "廓",
+   "name_trad": "廓",
+   "lon": 102.1,
+   "lat": 36.3,
+   "modern": "化隆",
+   "region": "关内道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "河中",
+   "name_trad": "河中",
+   "lon": 110.44,
+   "lat": 34.87,
+   "modern": "永济",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "晋",
+   "name_trad": "晉",
+   "lon": 111.52,
+   "lat": 36.08,
+   "modern": "临汾",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "绛",
+   "name_trad": "絳",
+   "lon": 111.49,
+   "lat": 35.49,
+   "modern": "新绛",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "慈",
+   "name_trad": "慈",
+   "lon": 110.68,
+   "lat": 36.1,
+   "modern": "吉县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "隰",
+   "name_trad": "隰",
+   "lon": 110.94,
+   "lat": 36.69,
+   "modern": "隰县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "太原",
+   "name_trad": "太原",
+   "lon": 112.55,
+   "lat": 37.87,
+   "modern": "太原",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "汾",
+   "name_trad": "汾",
+   "lon": 111.79,
+   "lat": 37.27,
+   "modern": "汾阳",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "沁",
+   "name_trad": "沁",
+   "lon": 112.77,
+   "lat": 36.76,
+   "modern": "沁县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "潞",
+   "name_trad": "潞",
+   "lon": 113.11,
+   "lat": 36.33,
+   "modern": "长治",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "泽",
+   "name_trad": "澤",
+   "lon": 112.85,
+   "lat": 35.51,
+   "modern": "晋城",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "代",
+   "name_trad": "代",
+   "lon": 112.86,
+   "lat": 39.07,
+   "modern": "代县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "忻",
+   "name_trad": "忻",
+   "lon": 112.73,
+   "lat": 38.42,
+   "modern": "忻州",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "岚",
+   "name_trad": "嵐",
+   "lon": 111.67,
+   "lat": 38.28,
+   "modern": "岚县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宪",
+   "name_trad": "憲",
+   "lon": 111.51,
+   "lat": 39.02,
+   "modern": "静乐",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "石",
+   "name_trad": "石",
+   "lon": 111.13,
+   "lat": 37.52,
+   "modern": "离石",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "朔",
+   "name_trad": "朔",
+   "lon": 112.43,
+   "lat": 39.32,
+   "modern": "朔州",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "云",
+   "name_trad": "雲",
+   "lon": 113.3,
+   "lat": 40.08,
+   "modern": "大同",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蔚",
+   "name_trad": "蔚",
+   "lon": 114.59,
+   "lat": 39.84,
+   "modern": "蔚县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "应",
+   "name_trad": "應",
+   "lon": 113.19,
+   "lat": 39.55,
+   "modern": "应县",
+   "region": "河东道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "幽",
+   "name_trad": "幽",
+   "lon": 116.4,
+   "lat": 39.9,
+   "modern": "北京",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蓟",
+   "name_trad": "薊",
+   "lon": 117.4,
+   "lat": 40.05,
+   "modern": "蓟州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "妫",
+   "name_trad": "媯",
+   "lon": 115.58,
+   "lat": 40.45,
+   "modern": "怀来",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "檀",
+   "name_trad": "檀",
+   "lon": 116.8,
+   "lat": 40.35,
+   "modern": "密云",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "顺",
+   "name_trad": "順",
+   "lon": 116.65,
+   "lat": 40.13,
+   "modern": "顺义",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "顺化",
+   "name_trad": "順化",
+   "lon": 116.65,
+   "lat": 40.13,
+   "modern": "顺义/唐顺州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "营",
+   "name_trad": "營",
+   "lon": 118.17,
+   "lat": 41.48,
+   "modern": "朝阳",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "平",
+   "name_trad": "平",
+   "lon": 118.98,
+   "lat": 40.02,
+   "modern": "卢龙",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "莫",
+   "name_trad": "莫",
+   "lon": 115.98,
+   "lat": 38.85,
+   "modern": "任丘",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "瀛",
+   "name_trad": "瀛",
+   "lon": 116.1,
+   "lat": 38.32,
+   "modern": "河间",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "深",
+   "name_trad": "深",
+   "lon": 115.98,
+   "lat": 38.02,
+   "modern": "深州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "冀",
+   "name_trad": "冀",
+   "lon": 115.58,
+   "lat": 37.55,
+   "modern": "冀州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "赵",
+   "name_trad": "趙",
+   "lon": 114.78,
+   "lat": 37.75,
+   "modern": "赵县",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "恒",
+   "name_trad": "恆",
+   "lon": 114.52,
+   "lat": 38.03,
+   "modern": "正定",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "定",
+   "name_trad": "定",
+   "lon": 114.99,
+   "lat": 38.52,
+   "modern": "定州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "易",
+   "name_trad": "易",
+   "lon": 115.5,
+   "lat": 39.35,
+   "modern": "易县",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "沧",
+   "name_trad": "滄",
+   "lon": 116.84,
+   "lat": 38.3,
+   "modern": "沧州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "景",
+   "name_trad": "景",
+   "lon": 116.55,
+   "lat": 37.85,
+   "modern": "景县",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "德",
+   "name_trad": "德",
+   "lon": 116.3,
+   "lat": 37.45,
+   "modern": "德州",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "棣",
+   "name_trad": "棣",
+   "lon": 117.63,
+   "lat": 37.75,
+   "modern": "惠民",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "贝",
+   "name_trad": "貝",
+   "lon": 115.68,
+   "lat": 37.35,
+   "modern": "清河",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "魏",
+   "name_trad": "魏",
+   "lon": 114.94,
+   "lat": 36.36,
+   "modern": "大名",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "博",
+   "name_trad": "博",
+   "lon": 115.58,
+   "lat": 36.55,
+   "modern": "聊城",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "相",
+   "name_trad": "相",
+   "lon": 114.35,
+   "lat": 36.1,
+   "modern": "安阳",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "卫",
+   "name_trad": "衛",
+   "lon": 114.6,
+   "lat": 35.3,
+   "modern": "卫辉",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "洺",
+   "name_trad": "洺",
+   "lon": 114.5,
+   "lat": 36.68,
+   "modern": "永年",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "邢",
+   "name_trad": "邢",
+   "lon": 114.5,
+   "lat": 37.07,
+   "modern": "邢台",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "磁",
+   "name_trad": "磁",
+   "lon": 114.37,
+   "lat": 36.37,
+   "modern": "磁县",
+   "region": "河北道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "河南",
+   "name_trad": "河南",
+   "lon": 112.45,
+   "lat": 34.62,
+   "modern": "洛阳",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "陕",
+   "name_trad": "陝",
+   "lon": 111.2,
+   "lat": 34.77,
+   "modern": "三门峡",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "虢",
+   "name_trad": "虢",
+   "lon": 110.89,
+   "lat": 34.52,
+   "modern": "灵宝",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "滑",
+   "name_trad": "滑",
+   "lon": 114.52,
+   "lat": 35.58,
+   "modern": "滑县",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "郑",
+   "name_trad": "鄭",
+   "lon": 113.63,
+   "lat": 34.75,
+   "modern": "郑州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "汴",
+   "name_trad": "汴",
+   "lon": 114.31,
+   "lat": 34.8,
+   "modern": "开封",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宋",
+   "name_trad": "宋",
+   "lon": 115.65,
+   "lat": 34.44,
+   "modern": "商丘",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "亳",
+   "name_trad": "亳",
+   "lon": 115.78,
+   "lat": 33.87,
+   "modern": "亳州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "颍",
+   "name_trad": "潁",
+   "lon": 115.82,
+   "lat": 32.9,
+   "modern": "阜阳",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "陈",
+   "name_trad": "陳",
+   "lon": 114.7,
+   "lat": 33.63,
+   "modern": "淮阳",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蔡",
+   "name_trad": "蔡",
+   "lon": 114.35,
+   "lat": 33.0,
+   "modern": "汝南",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "许",
+   "name_trad": "許",
+   "lon": 113.85,
+   "lat": 34.03,
+   "modern": "许昌",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "汝",
+   "name_trad": "汝",
+   "lon": 112.84,
+   "lat": 34.16,
+   "modern": "汝州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "濮",
+   "name_trad": "濮",
+   "lon": 115.03,
+   "lat": 35.76,
+   "modern": "濮阳",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "曹",
+   "name_trad": "曹",
+   "lon": 115.48,
+   "lat": 35.23,
+   "modern": "菏泽",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "郓",
+   "name_trad": "鄆",
+   "lon": 116.47,
+   "lat": 35.94,
+   "modern": "东平",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "兖",
+   "name_trad": "兗",
+   "lon": 116.83,
+   "lat": 35.55,
+   "modern": "兖州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "青",
+   "name_trad": "青",
+   "lon": 118.48,
+   "lat": 36.68,
+   "modern": "青州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "齐",
+   "name_trad": "齊",
+   "lon": 117.0,
+   "lat": 36.65,
+   "modern": "济南",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "淄",
+   "name_trad": "淄",
+   "lon": 118.05,
+   "lat": 36.8,
+   "modern": "淄博",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "登",
+   "name_trad": "登",
+   "lon": 120.76,
+   "lat": 37.81,
+   "modern": "蓬莱",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "莱",
+   "name_trad": "萊",
+   "lon": 119.94,
+   "lat": 37.35,
+   "modern": "莱州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "沂",
+   "name_trad": "沂",
+   "lon": 118.35,
+   "lat": 35.05,
+   "modern": "临沂",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "密",
+   "name_trad": "密",
+   "lon": 119.41,
+   "lat": 35.99,
+   "modern": "诸城",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "海",
+   "name_trad": "海",
+   "lon": 119.17,
+   "lat": 34.6,
+   "modern": "连云港",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "泗",
+   "name_trad": "泗",
+   "lon": 118.28,
+   "lat": 33.01,
+   "modern": "盱眙",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "濠",
+   "name_trad": "濠",
+   "lon": 117.57,
+   "lat": 32.87,
+   "modern": "凤阳",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "徐",
+   "name_trad": "徐",
+   "lon": 117.28,
+   "lat": 34.26,
+   "modern": "徐州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宿",
+   "name_trad": "宿",
+   "lon": 116.98,
+   "lat": 33.63,
+   "modern": "宿州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "豫",
+   "name_trad": "豫",
+   "lon": 114.03,
+   "lat": 32.98,
+   "modern": "汝南/豫州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "仙",
+   "name_trad": "仙",
+   "lon": 114.1,
+   "lat": 33.4,
+   "modern": "舞钢/仙州",
+   "region": "河南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "襄",
+   "name_trad": "襄",
+   "lon": 112.13,
+   "lat": 32.01,
+   "modern": "襄阳",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "邓",
+   "name_trad": "鄧",
+   "lon": 112.09,
+   "lat": 32.68,
+   "modern": "邓州",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "唐",
+   "name_trad": "唐",
+   "lon": 112.83,
+   "lat": 32.68,
+   "modern": "唐河",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "随",
+   "name_trad": "隨",
+   "lon": 113.38,
+   "lat": 31.69,
+   "modern": "随州",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "郢",
+   "name_trad": "郢",
+   "lon": 112.59,
+   "lat": 31.17,
+   "modern": "钟祥",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "复",
+   "name_trad": "復",
+   "lon": 113.17,
+   "lat": 30.66,
+   "modern": "天门",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "荆",
+   "name_trad": "荊",
+   "lon": 112.2,
+   "lat": 30.35,
+   "modern": "江陵",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "峡",
+   "name_trad": "峽",
+   "lon": 111.28,
+   "lat": 30.7,
+   "modern": "宜昌",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "归",
+   "name_trad": "歸",
+   "lon": 110.98,
+   "lat": 30.83,
+   "modern": "秭归",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "夔",
+   "name_trad": "夔",
+   "lon": 109.47,
+   "lat": 31.02,
+   "modern": "奉节",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "万",
+   "name_trad": "萬",
+   "lon": 108.4,
+   "lat": 30.81,
+   "modern": "万州",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "忠",
+   "name_trad": "忠",
+   "lon": 108.03,
+   "lat": 30.29,
+   "modern": "忠县",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "涪",
+   "name_trad": "涪",
+   "lon": 107.39,
+   "lat": 29.7,
+   "modern": "涪陵",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "朗",
+   "name_trad": "朗",
+   "lon": 111.7,
+   "lat": 29.03,
+   "modern": "常德",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "澧",
+   "name_trad": "澧",
+   "lon": 111.76,
+   "lat": 29.63,
+   "modern": "澧县",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "梁",
+   "name_trad": "梁",
+   "lon": 107.03,
+   "lat": 33.07,
+   "modern": "汉中",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "洋",
+   "name_trad": "洋",
+   "lon": 107.55,
+   "lat": 33.38,
+   "modern": "洋县",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "利",
+   "name_trad": "利",
+   "lon": 105.84,
+   "lat": 32.44,
+   "modern": "广元",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "阆",
+   "name_trad": "閬",
+   "lon": 106.0,
+   "lat": 31.58,
+   "modern": "阆中",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "果",
+   "name_trad": "果",
+   "lon": 106.08,
+   "lat": 30.8,
+   "modern": "南充",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蓬",
+   "name_trad": "蓬",
+   "lon": 106.41,
+   "lat": 31.06,
+   "modern": "蓬安",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "渠",
+   "name_trad": "渠",
+   "lon": 106.97,
+   "lat": 30.84,
+   "modern": "渠县",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "通",
+   "name_trad": "通",
+   "lon": 107.5,
+   "lat": 31.21,
+   "modern": "达州",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "开",
+   "name_trad": "開",
+   "lon": 108.4,
+   "lat": 31.18,
+   "modern": "开州",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "巴",
+   "name_trad": "巴",
+   "lon": 106.75,
+   "lat": 31.87,
+   "modern": "巴中",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "壁",
+   "name_trad": "壁",
+   "lon": 107.24,
+   "lat": 31.91,
+   "modern": "通江",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "集",
+   "name_trad": "集",
+   "lon": 106.84,
+   "lat": 32.35,
+   "modern": "南江",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "兴",
+   "name_trad": "興",
+   "lon": 107.03,
+   "lat": 33.07,
+   "modern": "汉中/兴元",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "凤",
+   "name_trad": "鳳",
+   "lon": 106.52,
+   "lat": 33.91,
+   "modern": "凤县",
+   "region": "山南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "扬",
+   "name_trad": "揚",
+   "lon": 119.42,
+   "lat": 32.39,
+   "modern": "扬州",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "楚",
+   "name_trad": "楚",
+   "lon": 119.02,
+   "lat": 33.61,
+   "modern": "淮安",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "滁",
+   "name_trad": "滁",
+   "lon": 118.32,
+   "lat": 32.3,
+   "modern": "滁州",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "和",
+   "name_trad": "和",
+   "lon": 118.36,
+   "lat": 31.72,
+   "modern": "和县",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "寿",
+   "name_trad": "壽",
+   "lon": 116.79,
+   "lat": 32.58,
+   "modern": "寿县",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "庐",
+   "name_trad": "廬",
+   "lon": 117.28,
+   "lat": 31.86,
+   "modern": "合肥",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "舒",
+   "name_trad": "舒",
+   "lon": 116.58,
+   "lat": 30.63,
+   "modern": "潜山",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蕲",
+   "name_trad": "蘄",
+   "lon": 115.44,
+   "lat": 30.23,
+   "modern": "蕲春",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "安",
+   "name_trad": "安",
+   "lon": 113.69,
+   "lat": 31.26,
+   "modern": "安陆",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "黄",
+   "name_trad": "黃",
+   "lon": 114.88,
+   "lat": 30.45,
+   "modern": "黄冈",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "沔",
+   "name_trad": "沔",
+   "lon": 114.22,
+   "lat": 30.55,
+   "modern": "汉阳",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "鄂",
+   "name_trad": "鄂",
+   "lon": 114.32,
+   "lat": 30.55,
+   "modern": "武昌",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "岳",
+   "name_trad": "嶽",
+   "lon": 113.13,
+   "lat": 29.37,
+   "modern": "岳阳",
+   "region": "淮南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "凉",
+   "name_trad": "涼",
+   "lon": 102.63,
+   "lat": 37.93,
+   "modern": "武威",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "甘",
+   "name_trad": "甘",
+   "lon": 100.45,
+   "lat": 38.93,
+   "modern": "张掖",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "肃",
+   "name_trad": "肅",
+   "lon": 98.49,
+   "lat": 39.75,
+   "modern": "酒泉",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "瓜",
+   "name_trad": "瓜",
+   "lon": 95.8,
+   "lat": 40.52,
+   "modern": "瓜州",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "沙",
+   "name_trad": "沙",
+   "lon": 94.66,
+   "lat": 40.14,
+   "modern": "敦煌",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "伊",
+   "name_trad": "伊",
+   "lon": 93.51,
+   "lat": 42.83,
+   "modern": "哈密",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "西",
+   "name_trad": "西",
+   "lon": 89.19,
+   "lat": 42.95,
+   "modern": "吐鲁番",
+   "region": "陇右道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "苏",
+   "name_trad": "蘇",
+   "lon": 120.62,
+   "lat": 31.3,
+   "modern": "苏州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "常",
+   "name_trad": "常",
+   "lon": 119.97,
+   "lat": 31.81,
+   "modern": "常州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "湖",
+   "name_trad": "湖",
+   "lon": 120.09,
+   "lat": 30.89,
+   "modern": "湖州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "杭",
+   "name_trad": "杭",
+   "lon": 120.15,
+   "lat": 30.27,
+   "modern": "杭州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "睦",
+   "name_trad": "睦",
+   "lon": 119.28,
+   "lat": 29.47,
+   "modern": "建德",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "越",
+   "name_trad": "越",
+   "lon": 120.58,
+   "lat": 30.0,
+   "modern": "绍兴",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "婺",
+   "name_trad": "婺",
+   "lon": 119.65,
+   "lat": 29.08,
+   "modern": "金华",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "衢",
+   "name_trad": "衢",
+   "lon": 118.87,
+   "lat": 28.94,
+   "modern": "衢州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "处",
+   "name_trad": "處",
+   "lon": 119.92,
+   "lat": 28.45,
+   "modern": "丽水",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "台",
+   "name_trad": "臺",
+   "lon": 121.14,
+   "lat": 28.86,
+   "modern": "临海",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "明",
+   "name_trad": "明",
+   "lon": 121.55,
+   "lat": 29.88,
+   "modern": "宁波",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "温",
+   "name_trad": "溫",
+   "lon": 120.62,
+   "lat": 28.02,
+   "modern": "温州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "歙",
+   "name_trad": "歙",
+   "lon": 118.43,
+   "lat": 29.87,
+   "modern": "歙县",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宣",
+   "name_trad": "宣",
+   "lon": 118.75,
+   "lat": 30.95,
+   "modern": "宣城",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "饶",
+   "name_trad": "饒",
+   "lon": 116.7,
+   "lat": 29.0,
+   "modern": "鄱阳",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "信",
+   "name_trad": "信",
+   "lon": 117.94,
+   "lat": 28.45,
+   "modern": "上饶",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "抚",
+   "name_trad": "撫",
+   "lon": 116.36,
+   "lat": 27.95,
+   "modern": "临川",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "吉",
+   "name_trad": "吉",
+   "lon": 114.99,
+   "lat": 27.11,
+   "modern": "吉安",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "虔",
+   "name_trad": "虔",
+   "lon": 114.94,
+   "lat": 25.85,
+   "modern": "赣州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "洪",
+   "name_trad": "洪",
+   "lon": 115.89,
+   "lat": 28.68,
+   "modern": "南昌",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "袁",
+   "name_trad": "袁",
+   "lon": 114.38,
+   "lat": 27.81,
+   "modern": "宜春",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "江",
+   "name_trad": "江",
+   "lon": 115.99,
+   "lat": 29.71,
+   "modern": "九江",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "潭",
+   "name_trad": "潭",
+   "lon": 112.94,
+   "lat": 28.23,
+   "modern": "长沙",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "衡",
+   "name_trad": "衡",
+   "lon": 112.61,
+   "lat": 26.89,
+   "modern": "衡阳",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "永",
+   "name_trad": "永",
+   "lon": 111.61,
+   "lat": 26.42,
+   "modern": "永州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "道",
+   "name_trad": "道",
+   "lon": 111.6,
+   "lat": 25.53,
+   "modern": "道县",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "郴",
+   "name_trad": "郴",
+   "lon": 113.02,
+   "lat": 25.77,
+   "modern": "郴州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "邵",
+   "name_trad": "邵",
+   "lon": 111.47,
+   "lat": 27.24,
+   "modern": "邵阳",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "连",
+   "name_trad": "連",
+   "lon": 112.3,
+   "lat": 24.78,
+   "modern": "连州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "泉",
+   "name_trad": "泉",
+   "lon": 118.59,
+   "lat": 24.9,
+   "modern": "泉州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "建",
+   "name_trad": "建",
+   "lon": 118.12,
+   "lat": 27.34,
+   "modern": "建瓯",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "福",
+   "name_trad": "福",
+   "lon": 119.3,
+   "lat": 26.08,
+   "modern": "福州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "隋",
+   "name_trad": "隋",
+   "lon": 113.38,
+   "lat": 31.69,
+   "modern": "随州",
+   "region": "江南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "益",
+   "name_trad": "益",
+   "lon": 104.07,
+   "lat": 30.67,
+   "modern": "成都",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "彭",
+   "name_trad": "彭",
+   "lon": 103.94,
+   "lat": 30.99,
+   "modern": "彭州",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蜀",
+   "name_trad": "蜀",
+   "lon": 103.67,
+   "lat": 30.63,
+   "modern": "崇州",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "汉",
+   "name_trad": "漢",
+   "lon": 104.28,
+   "lat": 30.98,
+   "modern": "广汉",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "眉",
+   "name_trad": "眉",
+   "lon": 103.85,
+   "lat": 30.05,
+   "modern": "眉山",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "嘉",
+   "name_trad": "嘉",
+   "lon": 103.77,
+   "lat": 29.55,
+   "modern": "乐山",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "邛",
+   "name_trad": "邛",
+   "lon": 103.48,
+   "lat": 30.41,
+   "modern": "邛崃",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "简",
+   "name_trad": "簡",
+   "lon": 104.55,
+   "lat": 30.41,
+   "modern": "简阳",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "资",
+   "name_trad": "資",
+   "lon": 104.85,
+   "lat": 29.78,
+   "modern": "资中",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "巂",
+   "name_trad": "巂",
+   "lon": 102.27,
+   "lat": 27.9,
+   "modern": "西昌",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "雅",
+   "name_trad": "雅",
+   "lon": 103.0,
+   "lat": 30.01,
+   "modern": "雅安",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "黎",
+   "name_trad": "黎",
+   "lon": 102.65,
+   "lat": 29.35,
+   "modern": "汉源",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "茂",
+   "name_trad": "茂",
+   "lon": 103.85,
+   "lat": 31.68,
+   "modern": "茂县",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "翼",
+   "name_trad": "翼",
+   "lon": 103.7,
+   "lat": 31.95,
+   "modern": "茂县北",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "维",
+   "name_trad": "維",
+   "lon": 103.17,
+   "lat": 31.44,
+   "modern": "理县",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "戎",
+   "name_trad": "戎",
+   "lon": 104.63,
+   "lat": 28.77,
+   "modern": "宜宾",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "姚",
+   "name_trad": "姚",
+   "lon": 101.24,
+   "lat": 25.5,
+   "modern": "姚安",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "松",
+   "name_trad": "松",
+   "lon": 103.6,
+   "lat": 32.65,
+   "modern": "松潘",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "当",
+   "name_trad": "當",
+   "lon": 102.99,
+   "lat": 32.06,
+   "modern": "黑水",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "悉",
+   "name_trad": "悉",
+   "lon": 103.2,
+   "lat": 32.0,
+   "modern": "松潘南",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "柘",
+   "name_trad": "柘",
+   "lon": 102.8,
+   "lat": 31.5,
+   "modern": "马尔康东",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "静",
+   "name_trad": "靜",
+   "lon": 102.5,
+   "lat": 31.3,
+   "modern": "小金",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "恭",
+   "name_trad": "恭",
+   "lon": 103.9,
+   "lat": 31.3,
+   "modern": "汶川北",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "保",
+   "name_trad": "保",
+   "lon": 102.9,
+   "lat": 31.8,
+   "modern": "马尔康",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "真",
+   "name_trad": "真",
+   "lon": 104.2,
+   "lat": 31.6,
+   "modern": "北川",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "霸",
+   "name_trad": "霸",
+   "lon": 104.4,
+   "lat": 31.3,
+   "modern": "绵阳北",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "干",
+   "name_trad": "幹",
+   "lon": 104.6,
+   "lat": 31.5,
+   "modern": "茂县东",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "梓",
+   "name_trad": "梓",
+   "lon": 105.17,
+   "lat": 31.47,
+   "modern": "三台",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "遂",
+   "name_trad": "遂",
+   "lon": 105.57,
+   "lat": 30.53,
+   "modern": "遂宁",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "绵",
+   "name_trad": "綿",
+   "lon": 104.68,
+   "lat": 31.47,
+   "modern": "绵阳",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "合",
+   "name_trad": "合",
+   "lon": 106.27,
+   "lat": 30.06,
+   "modern": "合川",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "渝",
+   "name_trad": "渝",
+   "lon": 106.55,
+   "lat": 29.56,
+   "modern": "重庆",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "泸",
+   "name_trad": "瀘",
+   "lon": 105.44,
+   "lat": 28.87,
+   "modern": "泸州",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "普",
+   "name_trad": "普",
+   "lon": 105.36,
+   "lat": 30.1,
+   "modern": "安岳",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "陵",
+   "name_trad": "陵",
+   "lon": 104.13,
+   "lat": 29.99,
+   "modern": "仁寿",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "荣",
+   "name_trad": "榮",
+   "lon": 104.42,
+   "lat": 29.45,
+   "modern": "荣县",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "昌",
+   "name_trad": "昌",
+   "lon": 105.72,
+   "lat": 29.7,
+   "modern": "大足",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "龙",
+   "name_trad": "龍",
+   "lon": 104.75,
+   "lat": 31.78,
+   "modern": "江油",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "剑",
+   "name_trad": "劍",
+   "lon": 105.52,
+   "lat": 32.29,
+   "modern": "剑阁",
+   "region": "剑南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "广",
+   "name_trad": "廣",
+   "lon": 113.26,
+   "lat": 23.13,
+   "modern": "广州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "韶",
+   "name_trad": "韶",
+   "lon": 113.6,
+   "lat": 24.81,
+   "modern": "韶关",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "循",
+   "name_trad": "循",
+   "lon": 114.42,
+   "lat": 23.11,
+   "modern": "惠州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "潮",
+   "name_trad": "潮",
+   "lon": 116.62,
+   "lat": 23.66,
+   "modern": "潮州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "康",
+   "name_trad": "康",
+   "lon": 111.79,
+   "lat": 23.15,
+   "modern": "德庆",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "端",
+   "name_trad": "端",
+   "lon": 112.47,
+   "lat": 23.05,
+   "modern": "肇庆",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "新",
+   "name_trad": "新",
+   "lon": 112.23,
+   "lat": 22.7,
+   "modern": "新兴",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "恩",
+   "name_trad": "恩",
+   "lon": 112.3,
+   "lat": 22.18,
+   "modern": "恩平",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "春",
+   "name_trad": "春",
+   "lon": 111.79,
+   "lat": 22.17,
+   "modern": "阳春",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "高",
+   "name_trad": "高",
+   "lon": 110.85,
+   "lat": 21.92,
+   "modern": "高州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "潘",
+   "name_trad": "潘",
+   "lon": 110.92,
+   "lat": 21.66,
+   "modern": "茂名",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "雷",
+   "name_trad": "雷",
+   "lon": 110.1,
+   "lat": 20.92,
+   "modern": "雷州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "罗",
+   "name_trad": "羅",
+   "lon": 110.28,
+   "lat": 21.61,
+   "modern": "廉江",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "儋",
+   "name_trad": "儋",
+   "lon": 109.58,
+   "lat": 19.52,
+   "modern": "儋州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "崖",
+   "name_trad": "崖",
+   "lon": 109.51,
+   "lat": 18.25,
+   "modern": "三亚",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "振",
+   "name_trad": "振",
+   "lon": 109.17,
+   "lat": 18.36,
+   "modern": "崖城",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "琼",
+   "name_trad": "瓊",
+   "lon": 110.33,
+   "lat": 20.03,
+   "modern": "海口",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "桂",
+   "name_trad": "桂",
+   "lon": 110.3,
+   "lat": 25.28,
+   "modern": "桂林",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "昭",
+   "name_trad": "昭",
+   "lon": 110.64,
+   "lat": 24.63,
+   "modern": "平乐",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "富",
+   "name_trad": "富",
+   "lon": 110.81,
+   "lat": 24.17,
+   "modern": "昭平",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "贺",
+   "name_trad": "賀",
+   "lon": 111.55,
+   "lat": 24.42,
+   "modern": "贺州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "梧",
+   "name_trad": "梧",
+   "lon": 111.28,
+   "lat": 23.48,
+   "modern": "梧州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "藤",
+   "name_trad": "藤",
+   "lon": 110.92,
+   "lat": 23.38,
+   "modern": "藤县",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "容",
+   "name_trad": "容",
+   "lon": 110.55,
+   "lat": 22.87,
+   "modern": "容县",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "禺",
+   "name_trad": "禺",
+   "lon": 110.35,
+   "lat": 22.71,
+   "modern": "北流",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "白",
+   "name_trad": "白",
+   "lon": 109.98,
+   "lat": 22.27,
+   "modern": "博白",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "廉",
+   "name_trad": "廉",
+   "lon": 109.2,
+   "lat": 21.66,
+   "modern": "合浦",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "钦",
+   "name_trad": "欽",
+   "lon": 108.63,
+   "lat": 21.98,
+   "modern": "钦州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "横",
+   "name_trad": "橫",
+   "lon": 109.27,
+   "lat": 22.68,
+   "modern": "横县",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "贵",
+   "name_trad": "貴",
+   "lon": 109.6,
+   "lat": 23.1,
+   "modern": "贵港",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "宾",
+   "name_trad": "賓",
+   "lon": 108.81,
+   "lat": 23.22,
+   "modern": "宾阳",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "邕",
+   "name_trad": "邕",
+   "lon": 108.32,
+   "lat": 22.82,
+   "modern": "南宁",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "澄",
+   "name_trad": "澄",
+   "lon": 108.6,
+   "lat": 23.43,
+   "modern": "上林",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "淳",
+   "name_trad": "淳",
+   "lon": 108.9,
+   "lat": 22.9,
+   "modern": "横县南",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "瀼",
+   "name_trad": "瀼",
+   "lon": 107.98,
+   "lat": 22.15,
+   "modern": "上思",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "田",
+   "name_trad": "田",
+   "lon": 107.13,
+   "lat": 23.6,
+   "modern": "田东",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "笼",
+   "name_trad": "籠",
+   "lon": 107.9,
+   "lat": 22.64,
+   "modern": "扶绥",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "环",
+   "name_trad": "環",
+   "lon": 108.26,
+   "lat": 24.83,
+   "modern": "环江",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "古",
+   "name_trad": "古",
+   "lon": 109.61,
+   "lat": 25.78,
+   "modern": "三江",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "严",
+   "name_trad": "嚴",
+   "lon": 109.23,
+   "lat": 23.75,
+   "modern": "来宾",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "山",
+   "name_trad": "山",
+   "lon": 108.65,
+   "lat": 24.49,
+   "modern": "宜山",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "党",
+   "name_trad": "黨",
+   "lon": 110.15,
+   "lat": 22.63,
+   "modern": "玉林",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "牢",
+   "name_trad": "牢",
+   "lon": 107.36,
+   "lat": 22.4,
+   "modern": "崇左",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "汤",
+   "name_trad": "湯",
+   "lon": 109.7,
+   "lat": 23.97,
+   "modern": "象州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "芝",
+   "name_trad": "芝",
+   "lon": 108.66,
+   "lat": 24.07,
+   "modern": "忻城",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "龚",
+   "name_trad": "龔",
+   "lon": 110.08,
+   "lat": 23.4,
+   "modern": "平南",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "绣",
+   "name_trad": "繡",
+   "lon": 110.55,
+   "lat": 22.4,
+   "modern": "桂平南",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "义",
+   "name_trad": "義",
+   "lon": 110.0,
+   "lat": 22.6,
+   "modern": "兴业",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "顺",
+   "name_trad": "順",
+   "lon": 109.6,
+   "lat": 22.4,
+   "modern": "灵山",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "郁",
+   "name_trad": "鬱",
+   "lon": 110.3,
+   "lat": 22.6,
+   "modern": "玉林北",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "融",
+   "name_trad": "融",
+   "lon": 109.25,
+   "lat": 25.22,
+   "modern": "融水",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "思",
+   "name_trad": "思",
+   "lon": 108.9,
+   "lat": 24.3,
+   "modern": "环江东",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "交",
+   "name_trad": "交",
+   "lon": 105.85,
+   "lat": 21.03,
+   "modern": "河内",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "峰",
+   "name_trad": "峰",
+   "lon": 105.3,
+   "lat": 21.3,
+   "modern": "越池",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "爱",
+   "name_trad": "愛",
+   "lon": 105.78,
+   "lat": 19.8,
+   "modern": "清化",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "演",
+   "name_trad": "演",
+   "lon": 105.1,
+   "lat": 19.2,
+   "modern": "演州",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "驩",
+   "name_trad": "驩",
+   "lon": 105.7,
+   "lat": 18.7,
+   "modern": "荣市",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "陆",
+   "name_trad": "陸",
+   "lon": 106.2,
+   "lat": 20.8,
+   "modern": "海防北",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "长",
+   "name_trad": "長",
+   "lon": 105.9,
+   "lat": 20.2,
+   "modern": "宁平",
+   "region": "岭南道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "黔",
+   "name_trad": "黔",
+   "lon": 108.17,
+   "lat": 29.29,
+   "modern": "彭水",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "辰",
+   "name_trad": "辰",
+   "lon": 110.39,
+   "lat": 28.46,
+   "modern": "沅陵",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "锦",
+   "name_trad": "錦",
+   "lon": 109.8,
+   "lat": 27.87,
+   "modern": "麻阳",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "施",
+   "name_trad": "施",
+   "lon": 109.49,
+   "lat": 30.29,
+   "modern": "恩施",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "溪",
+   "name_trad": "溪",
+   "lon": 109.85,
+   "lat": 29.0,
+   "modern": "永顺",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "思",
+   "name_trad": "思",
+   "lon": 108.5,
+   "lat": 28.56,
+   "modern": "沿河",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "播",
+   "name_trad": "播",
+   "lon": 106.93,
+   "lat": 27.73,
+   "modern": "遵义",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "费",
+   "name_trad": "費",
+   "lon": 108.25,
+   "lat": 27.94,
+   "modern": "思南",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "夷",
+   "name_trad": "夷",
+   "lon": 108.23,
+   "lat": 27.52,
+   "modern": "石阡",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "溱",
+   "name_trad": "溱",
+   "lon": 106.65,
+   "lat": 29.03,
+   "modern": "綦江",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "溆",
+   "name_trad": "漵",
+   "lon": 110.59,
+   "lat": 27.91,
+   "modern": "溆浦",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "奖",
+   "name_trad": "獎",
+   "lon": 109.68,
+   "lat": 27.44,
+   "modern": "芷江",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "珍",
+   "name_trad": "珍",
+   "lon": 107.44,
+   "lat": 28.55,
+   "modern": "正安",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "南",
+   "name_trad": "南",
+   "lon": 106.9,
+   "lat": 28.2,
+   "modern": "桐梓北",
+   "region": "黔中道",
+   "source": "reconstructed"
+  },
+  {
+   "name": "金",
+   "name_trad": "金",
+   "lon": 109.03,
+   "lat": 32.68,
+   "modern": "安康",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "仪",
+   "name_trad": "儀",
+   "lon": 113.38,
+   "lat": 37.07,
+   "modern": "左权",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "辽",
+   "name_trad": "遼",
+   "lon": 113.38,
+   "lat": 37.07,
+   "modern": "左权",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "光",
+   "name_trad": "光",
+   "lon": 115.05,
+   "lat": 32.13,
+   "modern": "潢川",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "均",
+   "name_trad": "均",
+   "lon": 111.51,
+   "lat": 32.54,
+   "modern": "丹江口",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "房",
+   "name_trad": "房",
+   "lon": 110.73,
+   "lat": 32.05,
+   "modern": "房县",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "怀",
+   "name_trad": "懷",
+   "lon": 112.95,
+   "lat": 35.09,
+   "modern": "沁阳",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "文",
+   "name_trad": "文",
+   "lon": 104.68,
+   "lat": 32.94,
+   "modern": "文县",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "扶",
+   "name_trad": "扶",
+   "lon": 104.24,
+   "lat": 33.26,
+   "modern": "九寨沟",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "澶",
+   "name_trad": "澶",
+   "lon": 115.1,
+   "lat": 35.89,
+   "modern": "清丰",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "燕",
+   "name_trad": "燕",
+   "lon": 116.3,
+   "lat": 40.2,
+   "modern": "昌平",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "鄚",
+   "name_trad": "鄚",
+   "lon": 115.98,
+   "lat": 38.85,
+   "modern": "任丘",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "蒲",
+   "name_trad": "蒲",
+   "lon": 110.44,
+   "lat": 34.87,
+   "modern": "永济",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "润",
+   "name_trad": "潤",
+   "lon": 119.45,
+   "lat": 32.2,
+   "modern": "镇江",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "封",
+   "name_trad": "封",
+   "lon": 111.51,
+   "lat": 23.42,
+   "modern": "封开",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "勤",
+   "name_trad": "勤",
+   "lon": 111.8,
+   "lat": 22.3,
+   "modern": "阳春北",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "泷",
+   "name_trad": "瀧",
+   "lon": 111.57,
+   "lat": 22.77,
+   "modern": "罗定",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "窦",
+   "name_trad": "竇",
+   "lon": 110.94,
+   "lat": 22.35,
+   "modern": "信宜",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "岩",
+   "name_trad": "巖",
+   "lon": 110.15,
+   "lat": 22.9,
+   "modern": "玉林西北",
+   "region": "补遗",
+   "source": "reconstructed"
+  },
+  {
+   "name": "平琴",
+   "name_trad": "平琴",
+   "lon": 110.1,
+   "lat": 22.3,
+   "modern": "北流南",
+   "region": "补遗",
+   "source": "reconstructed"
+  }
+ ]
+}

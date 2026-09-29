@@ -415,12 +415,36 @@ def main():
         print(f"  {c:8s} 治{(v['seat'] or '?'):3s} {len(v['zhou']):2d}州  "
               f"{'、'.join(v['zhou'])}")
 
-    json.dump(dic, open(os.path.join(OUT, "tang_zhou_dict.json"), "w", encoding="utf-8"),
-              ensure_ascii=False, indent=1)
-    json.dump(tl, open(os.path.join(OUT, "tang_fanzhen_timeline.json"), "w", encoding="utf-8"),
-              ensure_ascii=False)
+    write_keep_overlay(os.path.join(OUT, "tang_zhou_dict.json"), dic)
+    write_keep_overlay(os.path.join(OUT, "tang_fanzhen_timeline.json"), tl)
     print(f"\n-> {OUT}\\tang_zhou_dict.json")
     print(f"-> {OUT}\\tang_fanzhen_timeline.json")
+
+
+def write_keep_overlay(path: str, obj):
+    """写盘时把已有文件里下划线开头的键原样带回来。
+
+    _display（藩镇改名）、_footer（口径声明）、_baseline/_legend/_palette
+    这些是手工加的覆盖层，解析器不产出它们。不保留的话，
+    重跑一次解析就把这些人工成果冲掉了。
+    """
+    keep = {}
+    if os.path.exists(path):
+        try:
+            old = json.load(open(path, encoding="utf-8"))
+            if isinstance(old, dict):
+                keep = {k: v for k, v in old.items() if k.startswith("_")}
+        except Exception as e:
+            print(f"  [警告] 读不回旧覆盖层（{type(e).__name__}: {e}），本次不保留")
+    if keep:
+        for k, v in keep.items():
+            obj.setdefault(k, v)
+        # 下划线键排在最前面，人看文件时先看到口径
+        ordered = {k: obj[k] for k in keep}
+        ordered.update({k: v for k, v in obj.items() if k not in ordered})
+        obj = ordered
+        print(f"  保留手工覆盖层 {len(keep)} 项: {' '.join(sorted(keep))}")
+    json.dump(obj, open(path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
 
 if __name__ == "__main__":
