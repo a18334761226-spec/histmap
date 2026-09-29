@@ -348,7 +348,9 @@ $('#sClear').onclick = () => {
 $('#mask').onclick = e => { if (e.target.id === 'mask') $('#mask').classList.remove('on'); };
 
 // ── 参数同步 ──
-const ym = d => (d || '').slice(0, 4) + ' 年';
+// 年份从「-」处切，不要 slice(0,4)：980 年是三位数，切出来是「980- 年」。
+// 后端 int(str(date)[:4]) 踩过同一个坑。
+const ym = d => (d || '').split('-')[0] + ' 年';
 
 function fillRange(ds){
   const opts = ds.map((d, i) => `<option value="${i}">${ym(d)}</option>`).join('');
@@ -480,7 +482,7 @@ async function doRun(){
     if (!r.ok) throw new Error(errText(j.detail, '提交失败'));
     const jid = j.job;
     // 服务端实际会出 j.n_dates 帧，用它而不是本地算的 n
-    let msg = `开始出 ${j.n_dates} 张图（${state.from_date.slice(0,4)} → ${state.to_date.slice(0,4)}），出完自动合成视频。`;
+    let msg = `开始出 ${j.n_dates} 张图（${ym(state.from_date).trim()} → ${ym(state.to_date).trim()}），出完自动合成视频。`;
     if (j.note) msg += `　⚠ ${j.note}`;
     if (j.note) toast(j.note);
     addMsg('assistant', msg, `任务 ${jid}`);
