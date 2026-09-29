@@ -1,0 +1,125 @@
+{
+  "_comment": "题材定义。加一个新题材 = 加一个这样的 JSON，不写代码。",
+  "_schema": {
+    "id": "唯一标识",
+    "title": "显示名",
+    "kind": "boundary（用现成国界几何 + 控制表）| dynasty（史料构建：单元 → 今地名 → 合并县）",
+    "themes": "可选主题列表",
+    "bbox": "[minLon, minLat, maxLon, maxLat]",
+    "source_note": "数据来源与口径，会显示在界面上",
+    "license_note": "许可提示"
+  },
+  "topics": [
+    {
+      "id": "ww2-europe",
+      "title": "二战欧洲",
+      "subtitle": "1939–1945 · 实际控制格局",
+      "kind": "boundary",
+      "dataset": "cshapes",
+      "bbox": [
+        -11.0,
+        33.0,
+        62.0,
+        62.0
+      ],
+      "years": [
+        1939,
+        1945
+      ],
+      "control": "ww2_timeline.json",
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "default_date": "1941-06-22",
+      "default_size": "16x9",
+      "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线。可精确到任意日期。",
+      "license_note": "CShapes 要求学术引用，商用条款未确认"
+    },
+    {
+      "id": "ww1-europe",
+      "title": "一战欧洲",
+      "subtitle": "1914–1918 · 实际控制与占领",
+      "kind": "boundary",
+      "dataset": "cshapes",
+      "bbox": [
+        -11.0,
+        33.0,
+        62.0,
+        62.0
+      ],
+      "years": [
+        1914,
+        1918
+      ],
+      "control": "ww1_timeline.json",
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "default_date": "1916-06-01",
+      "default_size": "16x9",
+      "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线（同盟国/协约国占领）。",
+      "license_note": "CShapes 要求学术引用，商用条款未确认"
+    },
+    {
+      "id": "tang",
+      "title": "唐 · 藩镇割据",
+      "subtitle": "安史之乱后到唐末 · 藩镇辖境",
+      "kind": "dynasty",
+      "bbox": [
+        73.0,
+        17.0,
+        126.0,
+        45.0
+      ],
+      "years": [
+        763,
+        780,
+        807,
+        820,
+        875
+      ],
+      "units": "tang_zhou_gazetteer.json",
+      "control": "tang_fanzhen_timeline.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "807-01-01",
+      "default_size": "4x3",
+      "source_note": "数据源：《新唐书·方镇表》州县隶属 + 本项目重建的州治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
+      "license_note": "《新唐书》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
+      "merge_by": "owner"
+    },
+    {
+      "id": "song",
+      "title": "宋 · 路制疆域",
+      "subtitle": "北宋–南宋 · 路制行政区（颜色为所属政权）",
+      "kind": "dynasty",
+      "bbox": [
+        100.0,
+        20.0,
+        125.0,
+        42.0
+      ],
+      "years": [
+        980,
+        1040,
+        1080,
+        1120,
+        1140,
+        1200
+      ],
+      "units": "song_lu_gazetteer.json",
+      "control": "song_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1080-01-01",
+      "default_size": "4x3",
+      "source_note": "数据源：《宋史·地理志》路制沿革 + 本项目重建的路治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
+      "license_note": "《宋史》为公有领域；geoBoundaries CHN 为 PDDL",
+      "merge_by": "unit"
+    }
+  ]
+}
