@@ -1,0 +1,61 @@
+MIT License
+
+Copyright (c) 2026 histmap contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 数据许可（与代码许可分开）
+
+代码为 MIT。**数据集不适用 MIT**，各自遵循其原始许可，且一律走
+「下载器模式」——仓库不含数据本体，由 `src/fetch_data.py` 在本地获取。
+
+| 数据集 | 许可 | 可商用 | 可再分发 | 用途 |
+|---|---|---|---|---|
+| CShapes 2.0（ETH Zürich） | 学术引用要求；商用条款**未确认** | ⚠️ 需确认 | ✗ | 近现代国界 |
+| geoBoundaries CHN ADM2 | **PDDL v1.0**（≈公有领域） | ✓ | ✓ | 现代县界 |
+| geoBoundaries VNM ADM2 | **CC BY 3.0 IGO** | ✓（须署名） | ✓ | 越南县界 |
+| AtlasPI | Apache-2.0 | ✓ | ✓ | 宏观索引（几何质量低） |
+| 唐州治所坐标表（本项目重建） | 与代码一致 | ✓ | ✓ | 唐代题材 |
+| 《新唐书·方镇表》文本 | 公有领域（古籍） | ✓ | ✓ | 唐代题材 |
+
+**使用 geoBoundaries VNM 数据时须保留署名**：
+"Viet Nam administrative boundaries, OCHA ROAP / Government of Viet Nam,
+CC BY 3.0 IGO, via geoBoundaries."
+
+### 明确不可用的数据源
+
+以下数据源经评估后**排除**，请勿引入：
+
+| 数据源 | 原因 |
+|---|---|
+| **CHGIS**（哈佛/复旦） | 官方许可明令「no commercial use, resale, or redistribution permitted」 |
+| 《中国历史地图集》（谭其骧） | 有版权，不得数字化再分发 |
+| `aourednik/historical-basemaps` | GPL-3.0，具传染性 |
+| 维基文库部分文献 | 若为 CC BY-SA 4.0 则具传染性，须逐篇确认 |
+
+### 关于重建数据的诚实说明
+
+`data/processed/tang_zhou_gazetteer.json` 里的唐代州治所坐标是本项目
+**按《新唐书·地理志》州县沿革对照今地名重建**的，并用 geoBoundaries
+的县多边形做了逐点几何校验（329/329 落在中国或越南境内）。
+
+**它是「AI 重建 + 几何验证」的数据，不是权威测绘数据。**
+用于示意地图、教学与短视频可以；用于学术引用请另找权威来源并自行核对。

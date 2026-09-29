@@ -1,0 +1,29 @@
+{
+  "id": "ww2-europe",
+  "title": "二战欧洲格局演变",
+  "subtitle": "1939–1945 实际控制",
+  "bbox": [-11.0, 33.0, 62.0, 62.0],
+  "projection": "mercator",
+  "dataset": "cshapes",
+  "years": [1939, 1945],
+  "control": "ww2_timeline",
+  "style": "ww2_dark",
+  "layout": { "mode": "full", "width": 1920, "height": 1080 },
+  "labels": { "language": "zh", "min_area_ratio": 0.0011 },
+  "legend": [
+    ["德国本土", "#b03030"],
+    ["德国吞并", "#c8574f"],
+    ["德国占领", "#dd8a80"],
+    ["被瓜分/分区占领", "#9a6b7a"],
+    ["意大利", "#c8722a"],
+    ["轴心国盟邦", "#d9a06a"],
+    ["苏联", "#8e44ad"],
+    ["英国及其属地", "#2f6fa8"],
+    ["盟军控制", "#4a90c8"],
+    ["同盟国占领", "#6f8fb5"],
+    ["其他独立国", "#46525e"],
+    ["中立国", "#5a6570"]
+  ],
+  "footer": "示意地图：分区/瓜分占领以单色表示（CShapes 视各国为单一几何体，未按军事分界线切开）；苏德战场内部、殖民体系与傀儡政权未细分",
+  "timeline": { "hold_still": 0.12, "hold_event": 0.55, "fade": 0.20 }
+}

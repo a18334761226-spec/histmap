@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>histmap · 用代码画历史地图</title>
+<meta name="description" content="把史料变成统一风格的历史地图：数据适配层 → 统一契约 → 控制状态叠加 → 渲染引擎。唐、二战用同一套引擎。">
+<style>
+  :root{
+    --paper:#efe7d6; --paper2:#e6dcc7; --ink:#2b2620; --ink2:#5a5045;
+    --line:#c9bda6; --accent:#8c3a2e; --accent2:#3f6b8a;
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#12100d;color:var(--ink);
+    font:16px/1.75 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;background:var(--paper);
+    box-shadow:0 0 60px rgba(0,0,0,.6)}
+  a{color:var(--accent)}
+
+  header{padding:84px 56px 56px;border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(120% 90% at 12% 0%, #f7f1e4 0%, rgba(247,241,228,0) 60%),
+      var(--paper)}
+  .kicker{font-size:13px;letter-spacing:.22em;color:var(--ink2);
+    text-transform:uppercase;margin-bottom:22px}
+  h1{margin:0;font-size:clamp(32px,4.6vw,54px);line-height:1.2;font-weight:800;
+    letter-spacing:-.01em}
+  h1 em{font-style:normal;color:var(--accent);
+    border-bottom:5px solid rgba(140,58,46,.22)}
+  .lede{margin:24px 0 0;font-size:19px;color:var(--ink2);max-width:66ch}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+  .tag{font-size:13px;padding:5px 13px;border:1px solid var(--line);
+    border-radius:999px;color:var(--ink2);background:rgba(255,255,255,.4)}
+
+  section{padding:56px;border-bottom:1px solid var(--line)}
+  h2{font-size:15px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--ink2);margin:0 0 28px;font-weight:700}
+  h3{font-size:22px;margin:0 0 10px}
+  p{margin:0 0 16px;color:var(--ink2)}
+  p strong,.ink{color:var(--ink)}
+
+  /* 主图 */
+  .hero{border:1px solid var(--line);background:#0f0d0a;border-radius:3px;
+    overflow:hidden;margin:0 0 22px}
+  .hero img{width:100%;display:block}
+  .caption{font-size:14px;color:var(--ink2);margin:0}
+  .caption b{color:var(--ink)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .card{border:1px solid var(--line);background:rgba(255,255,255,.42);
+    border-radius:3px;overflow:hidden}
+  .card img{width:100%;display:block;border-bottom:1px solid var(--line)}
+  .card .body{padding:16px 18px 20px}
+  .card .body .t{font-weight:700;margin-bottom:5px}
+  .card .body .d{font-size:14px;color:var(--ink2)}
+  .card.bad{border-color:#c9a08f}
+  .card.bad .t::before{content:"✕ ";color:#a33}
+  .card.good .t::before{content:"✓ ";color:#3d7a4e}
+
+  table{width:100%;border-collapse:collapse;font-size:15px;margin:20px 0 0}
+  th,td{padding:10px 13px;border-bottom:1px solid var(--line);text-align:left}
+  th{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink2)}
+  td.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .win{color:#2f6b41;font-weight:700}
+  .lose{color:#a33;font-weight:700}
+
+  .flow{display:grid;gap:12px}
+  .step{display:grid;grid-template-columns:48px 1fr;gap:16px;align-items:start;
+    padding:15px 17px;border:1px solid var(--line);border-radius:3px;
+    background:rgba(255,255,255,.42)}
+  .step .n{font-family:var(--mono);font-size:21px;color:var(--accent);font-weight:700;
+    line-height:1.3}
+  .step .h{font-weight:700;margin-bottom:3px}
+  .step .b{font-size:14px;color:var(--ink2)}
+
+  code{font-family:var(--mono);font-size:.9em;background:rgba(43,38,32,.07);
+    padding:2px 6px;border-radius:3px}
+  pre{font-family:var(--mono);font-size:13px;line-height:1.7;
+    background:#221f1a;color:#e8e0d0;padding:16px 18px;border-radius:3px;
+    overflow:auto;margin:16px 0}
+
+  .limit{background:rgba(140,58,46,.06);border-left:3px solid var(--accent);
+    padding:16px 20px;border-radius:0 3px 3px 0;margin-top:8px}
+  .limit ul{margin:8px 0 0;padding-left:20px}
+  .limit li{color:var(--ink2);margin-bottom:6px;font-size:15px}
+
+  footer{padding:36px 56px 52px;font-size:13px;color:var(--ink2)}
+  @media(max-width:820px){
+    .grid2{grid-template-columns:1fr}
+    header,section,footer{padding-left:22px;padding-right:22px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">histmap · 开源历史地图引擎</div>
+  <h1>你输入「<em>1941 年的欧洲谁控制谁</em>」，<br>它给你一张统一风格的历史地图</h1>
+  <p class="lede">
+    不是让 AI「画」一张地图——那会得到一张好看但读不出信息的图。
+    这里做的是：<span class="ink">把史料整理成结构化数据，用代码画出来</span>。
+    边界归数据、配色归样式、质感归后期，三者分离；
+    所以换题材不换引擎，换风格不重做数据。
+  </p>
+  <div class="meta">
+    <span class="tag">二战 · 1939–1945 已跑通</span>
+    <span class="tag">唐 · 元和二年（807）同一套引擎</span>
+    <span class="tag">含几何质量与保真度双闸门</span>
+    <span class="tag">代码 MIT · 数据下载器模式</span>
+  </div>
+</header>
+
+<!-- ── 第一屏：二战 ── -->
+<section>
+  <h2>这就是「1941 年的欧洲谁控制谁」</h2>
+  <div class="hero"><img src="assets/map_light.jpg" alt="二战欧洲 1942 年 11 月实际控制图"></div>
+  <p class="caption">
+    <b>二战欧洲 · 1942 年 11 月实际控制格局。</b>
+    每块领土的颜色代表<strong>谁在实际上控制它</strong>，而不是法律上的主权归属——
+    这个区别是关键的：只画主权边界会得出「1941 年的波兰属于同盟国」这种一眼假的结论。
+    图上德占区、苏联、英国及其属地、盟军控制、轴心国盟邦、被瓜分/分区占领、中立国各自可辨，
+    中文标注完整，底部附简化口径声明。
+  </p>
+</section>
+
+<section>
+  <h2>还能出一条完整的演变视频</h2>
+  <video src="assets/ww2.mp4" controls preload="metadata"
+         poster="assets/ww2_poster.jpg"
+         style="width:100%;border:1px solid var(--line);border-radius:3px;background:#000"></video>
+  <p style="margin-top:18px">
+    1939 → 1945 欧洲格局演变，131 个关键帧。
+    时间轴不是按月份均分，而是<span class="ink">月度帧 ∪ 事件帧</span>——
+    「巴黎陷落」这类节点会精确停在画面上；停留时长也跟着史料走
+    （有事件 0.55 秒，无事件 0.12 秒），动静有节奏，不是匀速幻灯。
+  </p>
+</section>
+
+<section>
+  <h2>同一份数据，换个主题</h2>
+  <div class="grid2">
+    <div class="card">
+      <img src="assets/map_dark_fx.jpg" alt="二战欧洲 · 深色主题">
+      <div class="body">
+        <div class="t">深色主题 · 短视频向</div>
+        <div class="d">色块对比强，适合竖屏科普。控制区颜色一眼可辨，中文标注完整，
+          右下角有「近期战局」大事记面板。</div>
+      </div>
+    </div>
+    <div class="card">
+      <img src="assets/map_light.jpg" alt="二战欧洲 · 宣纸主题">
+      <div class="body">
+        <div class="t">浅色主题 · 宣纸古籍向</div>
+        <div class="d">同一份数据、同一套渲染代码，只换一个 <code>theme</code> 参数。
+          不是把背景刷白——标注描边、图例面板、区域配色三样一起换，
+          否则字会糊、图例会变成黑底白字贴在宣纸上。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 换题材：唐 ── -->
+<section>
+  <h2>同一套引擎，换个题材：唐代</h2>
+  <p>
+    引擎本身不知道「唐朝」是什么，它只认 <code>Region / Frame / Series</code> 三个契约结构。
+    换题材 = 换数据适配器。下面这张图和上面那张二战图，出自同一套渲染引擎。
+  </p>
+  <div class="hero" style="margin-top:20px">
+    <img src="assets/tang_807_fx.jpg" alt="唐元和二年（807）藩镇割据形势图">
+  </div>
+  <p class="caption">
+    <b>唐 · 元和二年（807）藩镇割据形势。</b>
+    图上每一个藩镇都是从《新唐书·方镇表》的州县隶属记录重建出来的：
+    河北三镇（盧龍、成德、魏博）割据、淮西（蔡申光）跋扈、平盧（淄青）跨据十二州、
+    剑南分为东西两川、岭南五管 —— 正是宪宗元和削藩前夜的真实格局。
+  </p>
+</section>
+
+<section>
+  <h2>唐图是怎么来的（史料构建类）</h2>
+  <p>
+    唐代**没有任何许可证干净的现成边界数据**（唯一严谨的 CHGIS 明令禁止商用与再分发），
+    几何必须从史料重建：
+  </p>
+  <pre>《新唐书·方镇表》原文（维基文库，公有领域）
+   │  解析：藩镇 ← [州] 的逐年隶属        （42 列 / 566 个有效变化记录）
+   ▼
+唐州治所坐标表  329 条                    ← 按《地理志》州县沿革重建
+   │  逐点几何校验：必须落在真实县境内      （329/329 通过）
+   ▼
+现代县多边形 3099 个（geoBoundaries CHN + VNM，可商用许可）
+   │  每个县归到最近的**当年存在的**州治 → 州的面
+   ▼
+按藩镇-州隶属合并                         （2278 个县 → 263 个州 → 37 个藩镇）
+   ▼
+渲染 + 后期质感</pre>
+  <p>
+    为什么用「县归属」而不是 Voronoi 直接生成州：Voronoi 出来是直线多边形、
+    合成感极强、也不会沿海岸线切断；用真实县界拼出来的面形状自然、天然贴海岸线，
+    而且县的数量（3099）远大于州（约 260），粒度足够。
+  </p>
+</section>
+
+<!-- ── 实测 ── -->
+<section>
+  <h2>我们踩过的最贵的坑</h2>
+  <p>
+    最初想用图像生成模型直接出图。它确实做出了非常漂亮的羊皮纸雕版质感——
+    但<span class="ink">它把数据一起美化掉了</span>。
+  </p>
+  <div class="grid2" style="margin-top:22px">
+    <div class="card good">
+      <img src="assets/map_dark_fx.jpg" alt="代码加质感">
+      <div class="body">
+        <div class="t">代码加质感</div>
+        <div class="d">德国红 / 苏联紫 / 英国蓝全部可辨，中文标注完整，图例与大事记可读。</div>
+      </div>
+    </div>
+    <div class="card bad">
+      <img src="assets/model_fail.jpg" alt="模型风格化失败">
+      <div class="body">
+        <div class="t">图像模型风格化</div>
+        <div class="d">所有制区被抹成一片褐色，中文标注变成乱码笔画，还凭空重画了地理。</div>
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>指标</th><th>代码质感</th><th>图像模型</th></tr></thead>
+    <tbody>
+      <tr><td>输出尺寸</td><td class="num win">1920×1080 保持</td><td class="num lose">1360×768 被改</td></tr>
+      <tr><td>结构相似度 NCC</td><td class="num win">0.9548</td><td class="num lose">−0.0745</td></tr>
+      <tr><td>控制区颜色保真</td><td class="num win">98.95%</td><td class="num lose">33.57%</td></tr>
+      <tr><td>保真度闸门</td><td class="win">通过</td><td class="lose">未通过</td></tr>
+      <tr><td>单帧成本</td><td class="num win">0（本地约 1s）</td><td class="num lose">37s + 计费</td></tr>
+      <tr><td>帧间一致性</td><td class="win">确定性，完全一致</td><td class="lose">每帧漂移</td></tr>
+    </tbody>
+  </table>
+  <p style="margin-top:22px">
+    根因：<span class="ink">模型不知道哪些像素是「信息」、哪些是「材质」</span>。
+    所以我们把材质层交给代码（fBm 纸纹 + <strong>乘性调色</strong> + 暗角 + 做旧边 + 颗粒），
+    并对高亮度像素（文字描边）减弱纹理。乘性调色是关键：加性混色会把
+    红/紫/蓝拉平成一种颜色——<span class="ink">这正是模型犯的错</span>。
+  </p>
+</section>
+
+<!-- ── 架构 ── -->
+<section>
+  <h2>怎么做到「任意题材」</h2>
+  <div class="flow">
+    <div class="step"><div class="n">01</div><div>
+      <div class="h">数据适配层</div>
+      <div class="b">把不同来源的史料/边界统一成一种格式。近现代用现成多边形（CShapes），
+        唐代要从史料构建，古罗马用点位建面。适配器只认 manifest，上层不知道数据从哪来。</div></div></div>
+    <div class="step"><div class="n">02</div><div>
+      <div class="h">统一契约</div>
+      <div class="b"><code>Region / Frame / Series</code> 三个结构，Python 与浏览器两端共用。
+        渲染器永远不知道「唐朝」是什么，它只认契约。</div></div></div>
+    <div class="step"><div class="n">03</div><div>
+      <div class="h">控制状态叠加</div>
+      <div class="b">主权 ≠ 实际控制。控制关系作为<strong>属性</strong>叠加在既有几何上，
+        换年份只需换一张控制表，<span class="ink">不用重做几何</span>。</div></div></div>
+    <div class="step"><div class="n">04</div><div>
+      <div class="h">渲染引擎 + 样式层</div>
+      <div class="b">投影、标注避让、图例、版面全部外置成样式。同一个场景换个
+        <code>style</code> 就是另一种观感；投影已做到两端逐位一致（19/19 点，偏差 2.27e-13）。</div></div></div>
+    <div class="step"><div class="n">05</div><div>
+      <div class="h">后期质感层</div>
+      <div class="b">纯代码、确定性、零成本。四种预设：古典雕版 / 复古羊皮纸 /
+        宣纸水墨 / 现代信息图。</div></div></div>
+  </div>
+</section>
+
+<!-- ── 闸门 ── -->
+<section>
+  <h2>两道闸门</h2>
+  <h3>几何质量闸门</h3>
+  <p>
+    很多「历史地图」数据集用合成占位几何——一个 33 顶点的圆饼冒充德国。
+    我们用形态变异系数 + 顶点数 + 环数三重判据识别它。实测某数据源 1941 年
+    81 个实体里只有 <span class="ink">16 个是真实边界</span>（真实率 19.8%），
+    而它自带的 <code>confidence_score</code> 给一个 15 顶点的日本打了 0.9 分——
+    <span class="ink">自带置信度字段不能用来判断几何质量</span>。
+  </p>
+  <h3 style="margin-top:32px">保真度闸门</h3>
+  <p>
+    任何对成图做后处理的环节都必须先过：尺寸一致 + 结构相似度 NCC ≥ 0.90 +
+    色块保真 ≥ 80%。模型最常见的失败不是不好看，而是
+    <span class="ink">偷偷重画了文字或边界</span>——人眼扫一遍看不出来，但观众会。
+  </p>
+  <pre>闸门自检（证明它不是摆设）：
+  同一张图对比自己        → NCC 1.000  通过
+  拿 1939 的图冒充 1941   → NCC 0.841  正确判失败
+  代码质感版              → NCC 0.955  通过
+  模型风格化版            → NCC −0.075 正确判失败</pre>
+</section>
+
+<!-- ── 诚实 ── -->
+<section>
+  <h2>已知限制（不粉饰）</h2>
+  <div class="limit">
+    <ul>
+      <li><strong>唐代几何是重建的，不是史料记载的界线。</strong>
+        行政层级古今不对应，归属判据是「县治到州治直线距离最近」，
+        唐实际控制范围也与现代国界不同。用于示意、教学、短视频可以；
+        学术引用请另找权威来源。</li>
+      <li><strong>唐州治坐标表是 AI 重建 + 几何校验</strong>（329 条，全部落在真实县境内），
+        但不是权威测绘数据。</li>
+      <li><strong>方镇表解析仍有长尾误差</strong>：约 24 个州名未能定位；
+        别名重复（蒲州＝河中府、辽州＝仪州、鄚州＝莫州）会让同名地点出现两次。</li>
+      <li><strong>CHGIS 不可用</strong>：它是唯一严谨的中国历史行政区划 GIS，
+        但官方许可明令禁止商用与再分发，因此本项目完全没使用它。</li>
+      <li>契约里 <code>Region.rings</code> 是拍平的环列表，不支持真正的洞
+        （如南非内的莱索托）。</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <p>
+    <strong>代码 MIT。</strong>数据一律走<strong>下载器模式</strong>，不进仓库——
+    既避开许可问题，也避免 clone 变慢。
+  </p>
+  <p>
+    可商用数据源：geoBoundaries CHN（PDDL，≈公有领域）、
+    geoBoundaries VNM（CC BY 3.0 IGO，须署名）、
+    《新唐书》文本（公有领域）、本项目重建的唐州坐标表。
+  </p>
+  <p style="margin:0">
+    本页所有图片与视频<strong>均为真实运行结果，非效果图</strong>。
+  </p>
+</footer>
+
+</div>
+</body>
+</html>

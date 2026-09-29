@@ -1,0 +1,79 @@
+{
+  "_comment": "二战欧洲控制状态表。键为 CShapes 的 cntry_name（支持子串匹配）。",
+  "_model": "control_by=实际控制方；control_type=控制性质。用于把『主权国界』升级为『实际控制格局』。",
+  "_caveat": "年份内可能发生剧变（1941 年 4 月南斯拉夫/希腊沦陷、6 月巴巴罗萨）。本表按 1941 年年末状态编码。",
+
+  "1941": {
+    "Germany (Prussia)":   { "control_by": "德国",   "control_type": "sovereign", "label": "德国本土" },
+    "Austria":             { "control_by": "德国",   "control_type": "annexed",   "label": "德国吞并" },
+    "Luxembourg":          { "control_by": "德国",   "control_type": "annexed",   "label": "德国吞并" },
+    "Czechoslovakia":      { "control_by": "德国",   "control_type": "occupied",  "label": "德国占领（波希米亚-摩拉维亚保护国）" },
+    "Poland":              { "control_by": "德国",   "control_type": "occupied",  "label": "德苏瓜分" },
+    "France":              { "control_by": "德国",   "control_type": "occupied",  "label": "北部德占 + 维希法国" },
+    "Belgium":             { "control_by": "德国",   "control_type": "occupied",  "label": "德国占领" },
+    "Netherlands":         { "control_by": "德国",   "control_type": "occupied",  "label": "德国占领" },
+    "Denmark":             { "control_by": "德国",   "control_type": "occupied",  "label": "德国占领" },
+    "Norway":              { "control_by": "德国",   "control_type": "occupied",  "label": "德国占领（吉斯林政权）" },
+    "Yugoslavia":          { "control_by": "德国",   "control_type": "occupied",  "label": "德意匈保瓜分" },
+    "Greece":              { "control_by": "德国",   "control_type": "occupied",  "label": "德意保占领" },
+    "Albania":             { "control_by": "意大利", "control_type": "annexed",   "label": "意大利吞并" },
+    "Italy/Sardinia":      { "control_by": "意大利", "control_type": "sovereign", "label": "意大利本土" },
+    "Hungary":             { "control_by": "匈牙利", "control_type": "axis_ally", "label": "轴心盟邦" },
+    "Rumania":             { "control_by": "罗马尼亚", "control_type": "axis_ally", "label": "轴心盟邦" },
+    "Bulgaria":            { "control_by": "保加利亚", "control_type": "axis_ally", "label": "轴心盟邦" },
+    "Finland":             { "control_by": "芬兰",   "control_type": "axis_ally", "label": "轴心协同" },
+
+    "United Kingdom":      { "control_by": "英国",   "control_type": "sovereign", "label": "同盟国本土" },
+    "Malta":               { "control_by": "英国",   "control_type": "sovereign", "label": "英国属地" },
+    "Cyprus":              { "control_by": "英国",   "control_type": "sovereign", "label": "英国属地" },
+
+    "Syria":               { "control_by": "英国",   "control_type": "allied_control", "label": "自由法国/英国控制（1941.7 起）" },
+    "Tunisia":             { "control_by": "维希法国", "control_type": "vichy",   "label": "维希法国" },
+
+    "Turkey (Ottoman Empire)": { "control_by": "土耳其", "control_type": "neutral", "label": "中立" },
+    "Spain":               { "control_by": "西班牙", "control_type": "neutral",   "label": "中立（亲轴心）" },
+    "Spanish Morocco":     { "control_by": "西班牙", "control_type": "neutral",   "label": "西班牙属地" },
+    "Portugal":            { "control_by": "葡萄牙", "control_type": "neutral",   "label": "中立" },
+    "Sweden":              { "control_by": "瑞典",   "control_type": "neutral",   "label": "中立" },
+    "Switzerland":         { "control_by": "瑞士",   "control_type": "neutral",   "label": "中立" },
+    "Ireland":             { "control_by": "爱尔兰", "control_type": "neutral",   "label": "中立" },
+
+    "Soviet Union":        { "control_by": "苏联",   "control_type": "sovereign", "label": "苏联" },
+    "Russia":              { "control_by": "苏联",   "control_type": "sovereign", "label": "苏联" },
+    "Estonia":             { "control_by": "德国",   "control_type": "occupied",  "label": "1941 年被德国占领" },
+    "Latvia":              { "control_by": "德国",   "control_type": "occupied",  "label": "1941 年被德国占领" },
+    "Lithuania":           { "control_by": "德国",   "control_type": "occupied",  "label": "1941 年被德国占领" }
+  },
+
+  "1939": {
+    "Germany (Prussia)":   { "control_by": "德国",   "control_type": "sovereign", "label": "德国本土" },
+    "Austria":             { "control_by": "德国",   "control_type": "annexed",   "label": "德国吞并" },
+    "Czechoslovakia":      { "control_by": "德国",   "control_type": "occupied",  "label": "德国占领（1939.3 起）" },
+    "Poland":              { "control_by": "德国",   "control_type": "occupied",  "label": "德苏瓜分（1939.9 起）" },
+    "Italy/Sardinia":      { "control_by": "意大利", "control_type": "sovereign", "label": "意大利本土" },
+    "Albania":             { "control_by": "意大利", "control_type": "annexed",   "label": "意大利吞并（1939.4）" },
+    "Hungary":             { "control_by": "匈牙利", "control_type": "axis_ally", "label": "轴心盟邦" },
+    "United Kingdom":      { "control_by": "英国",   "control_type": "sovereign", "label": "同盟国本土" },
+    "France":              { "control_by": "法国",   "control_type": "sovereign", "label": "法国（1940.6 前）" },
+    "Turkey (Ottoman Empire)": { "control_by": "土耳其", "control_type": "neutral", "label": "中立" },
+    "Spain":               { "control_by": "西班牙", "control_type": "neutral",   "label": "中立" },
+    "Portugal":            { "control_by": "葡萄牙", "control_type": "neutral",   "label": "中立" },
+    "Sweden":              { "control_by": "瑞典",   "control_type": "neutral",   "label": "中立" },
+    "Switzerland":         { "control_by": "瑞士",   "control_type": "neutral",   "label": "中立" },
+    "Ireland":             { "control_by": "爱尔兰", "control_type": "neutral",   "label": "中立" },
+    "Soviet Union":        { "control_by": "苏联",   "control_type": "sovereign", "label": "苏联" },
+    "Russia":              { "control_by": "苏联",   "control_type": "sovereign", "label": "苏联" }
+  },
+
+  "_palette": {
+    "德国":     { "sovereign": "#b03030", "annexed": "#c25a5a", "occupied": "#d98a8a" },
+    "意大利":   { "sovereign": "#c8722a", "annexed": "#dda05a", "occupied": "#e8bc8a" },
+    "axis_ally": "#d9a06a",
+    "苏联":     "#8e44ad",
+    "英国":     "#2f6fa8",
+    "allied_control": "#4a90c8",
+    "vichy":    "#6b7a8f",
+    "neutral":  "#5a6570",
+    "default":  "#3a4048"
+  }
+}

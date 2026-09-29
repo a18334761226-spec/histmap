@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>histmap · 二战欧洲格局演变（浏览器端渲染）</title>
+<style>
+  :root {
+    --bg: #070a0e;
+    --panel: #0f151c;
+    --line: #1e2833;
+    --fg: #e6edf3;
+    --dim: #8b97a3;
+    --accent: #4a90c8;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  body { display: flex; flex-direction: column; gap: 0; }
+
+  header {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 14px 22px 10px; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .02em; }
+  header .sub { font-size: 12px; color: var(--dim); }
+  header .right { margin-left: auto; font-size: 12px; color: var(--dim); display: flex; gap: 16px; }
+  header .right b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #stageWrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 18px; min-width: 0; min-height: 0; position: relative;
+  }
+  canvas#stage {
+    max-width: 100%; max-height: 100%;
+    box-shadow: 0 10px 40px rgba(0,0,0,.55);
+    border-radius: 3px; display: block;
+  }
+  #hint {
+    position: absolute; inset: auto 0 26px 0; text-align: center;
+    font-size: 13px; color: var(--dim);
+  }
+
+  aside {
+    width: 250px; border-left: 1px solid var(--line);
+    padding: 16px 18px; overflow-y: auto; background: var(--panel);
+  }
+  aside h2 {
+    font-size: 11px; letter-spacing: .12em; color: var(--dim);
+    text-transform: uppercase; margin: 0 0 10px; font-weight: 600;
+  }
+  aside section { margin-bottom: 22px; }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .row label { flex: 1; font-size: 13px; color: var(--dim); }
+  select, button {
+    background: #16202a; color: var(--fg); border: 1px solid var(--line);
+    border-radius: 4px; padding: 5px 10px; font: inherit; font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover, select:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  .legendItem { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 5px; color: #c3ced9; }
+  .swatch { width: 15px; height: 10px; border-radius: 2px; flex: none; }
+  .kv { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+  .kv b { color: var(--fg); font-variant-numeric: tabular-nums; font-weight: 600; }
+
+  footer {
+    border-top: 1px solid var(--line); padding: 12px 22px 16px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  footer .time { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 168px; }
+  footer .sliderWrap { flex: 1; position: relative; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  .ticks { position: relative; height: 10px; margin-top: 2px; }
+  .ticks i {
+    position: absolute; top: 0; width: 1px; height: 5px;
+    background: #33414f;
+  }
+  .ticks i.ev { background: #b03030; height: 8px; }
+  .beat { font-size: 13px; color: var(--dim); min-height: 20px; }
+  .beat b { color: #e8a33d; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>二战欧洲格局演变</h1>
+  <span class="sub">1939–1945 · 浏览器端渲染（Canvas 2D，零服务器）</span>
+  <div class="right">
+    <span>帧耗时 <b id="ms">—</b></span>
+    <span>FPS <b id="fps">—</b></span>
+    <span>实体 <b id="nent">—</b></span>
+    <span>几何 <b id="nvert">—</b></span>
+  </div>
+</header>
+
+<main>
+  <div id="stageWrap">
+    <canvas id="stage"></canvas>
+    <div id="hint">正在加载数据…</div>
+  </div>
+  <aside>
+    <section>
+      <h2>播放</h2>
+      <div class="row"><label>质量</label>
+        <select id="ss">
+          <option value="1">流畅 (1×)</option>
+          <option value="2" selected>高清 (2×)</option>
+        </select>
+      </div>
+      <div class="row"><label>速度</label>
+        <select id="speed">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+      <div class="row"><label>叠加 Python 输出</label>
+        <input type="checkbox" id="overlay">
+      </div>
+    </section>
+
+    <section>
+      <h2>导出</h2>
+      <div class="row"><button id="png">导出 PNG</button></div>
+      <div class="row"><button id="rec">录制 WebM</button></div>
+      <div class="kv"><span>说明</span><b id="recState">—</b></div>
+    </section>
+
+    <section>
+      <h2>实际控制</h2>
+      <div id="legend"></div>
+    </section>
+
+    <section>
+      <h2>运行指标</h2>
+      <div class="kv"><span>时间轴关键帧</span><b id="nkeys">—</b></div>
+      <div class="kv"><span>已缓存年份</span><b id="ncache">—</b></div>
+      <div class="kv"><span>路径构建</span><b id="buildms">—</b></div>
+    </section>
+  </aside>
+</main>
+
+<footer>
+  <div class="time" id="dateLbl">—</div>
+  <div class="sliderWrap">
+    <input type="range" id="slider" min="0" max="0" value="0" step="1">
+    <div class="ticks" id="ticks"></div>
+  </div>
+  <button id="play" class="primary">播放</button>
+  <div class="beat" id="beat"></div>
+</footer>
+
+<script type="module">
+import { Renderer, Layout, ControlTimeline } from './histmap.js';
+
+const $ = (id) => document.getElementById(id);
+const DATA = '../data/web';
+const HOLD_STILL = 0.12, HOLD_EVENT = 0.55, FADE = 0.20;
+
+let scene, timeline, style, layout, renderer, canvas, ctx;
+let frame = null;                       // 当前 Frame
+const geoCache = new Map();             // year -> {features, paths}
+let keys = [];                          // 关键帧日期字符串
+let idx = 0, playing = false, lastTick = 0;
+let tickerBox = null;                   // 大事记面板固定尺寸（播放时不抖）
+
+// ── 时间轴关键帧：月度帧 + 事件帧（与 Python 端 build_dates 同规则） ──
+function buildDates() {
+  const set = new Set();
+  const pad = (n) => String(n).padStart(2, '0');
+  for (let y = scene.years[0]; y <= scene.years[1]; y++)
+    for (let m = 1; m <= 12; m++) set.add(`${y}-${pad(m)}-01`);
+  for (const e of timeline.events) set.add(String(e.date).slice(0, 10));
+  for (const m of timeline.markers) set.add(String(m.date).slice(0, 10));
+  const lo = `${scene.years[0]}-01-01`, hi = `${scene.years[1]}-12-31`;
+  return [...set].filter((d) => d >= lo && d <= hi).sort();
+}
+
+function beatsBetween(prev, cur) { return timeline.beatsBetween(prev, cur); }
+
+// ── 几何按年加载 + Path2D 缓存 ──
+async function ensureYear(year) {
+  if (geoCache.has(year)) return geoCache.get(year);
+  const t0 = performance.now();
+  const g = await (await fetch(`${DATA}/geometry/cshapes-${year}.json`)).json();
+  const features = g.features.map((f) => ({
+    name: f.name, props: f.props || {}, rings: f.rings, color: null,
+  }));
+  const paths = renderer.buildPaths(`${year}:${scene.bbox}:${renderer.ss}`,
+    features, scene.bbox);
+  const rec = { features, paths, buildMs: performance.now() - t0 };
+  geoCache.set(year, rec);
+  $('ncache').textContent = geoCache.size;
+  $('buildms').textContent = rec.buildMs.toFixed(0) + ' ms';
+  return rec;
+}
+
+// ── 渲染一帧 ──
+let frameCount = 0;
+async function renderAt(i, prevIdx) {
+  idx = Math.max(0, Math.min(keys.length - 1, i));
+  const date = keys[idx];
+  $('slider').value = idx;
+  $('dateLbl').textContent = fmt(date);
+
+  const year = Number(date.slice(0, 4));
+  const rec = await ensureYear(year);
+
+  const t0 = performance.now();
+  timeline.setDate(date);
+  const st = timeline.apply(frame = {
+    features: rec.features, title: '', subtitle: '',
+  });
+  const prevDate = prevIdx != null && keys[prevIdx] ? keys[prevIdx] : null;
+  const beats = beatsBetween(prevDate, date);
+
+  frame.title = date.slice(8, 10) === '01'
+    ? `${year} 年 ${Number(date.slice(5, 7))} 月`
+    : `${year} 年 ${Number(date.slice(5, 7))} 月 ${Number(date.slice(8, 10))} 日`;
+  frame.subtitle = beats.length
+    ? `${beats[beats.length - 1].date.slice(5)} · ${beats[beats.length - 1].label}`
+    : (prevDate === null ? '战前的欧洲' : '');
+
+  renderer.renderFrame(ctx, frame, scene.bbox, rec.paths, {
+    legendItems: scene.legend, legendTitle: '实际控制',
+  });
+  renderer.drawTicker(canvas, timeline.recentLines(date, 3), tickerBox);
+
+  if (overlayImg && $('overlay').checked) {
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.drawImage(overlayImg, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  const dt = performance.now() - t0;
+  frameCount++;
+  $('ms').textContent = dt.toFixed(0) + ' ms';
+  $('nent').textContent = rec.features.length;
+  $('nvert').textContent = rec.features.reduce((s, f) =>
+    s + f.rings.reduce((a, r) => a + r.length, 0), 0).toLocaleString();
+  $('beat').innerHTML = beats.length
+    ? beats.slice(-2).map((b) => `<b>${b.date}</b> ${b.label}`).join('　')
+    : '';
+}
+
+function fmt(d) {
+  const [y, m, dd] = d.split('-');
+  return dd === '01' ? `${y} 年 ${Number(m)} 月` : `${y}-${m}-${dd}`;
+}
+
+function holdSeconds(i) {
+  const prev = i > 0 ? keys[i - 1] : null;
+  return beatsBetween(prev, keys[i]).length ? HOLD_EVENT : HOLD_STILL;
+}
+
+// ── 播放循环（停留时长与 Python 端同一套节奏） ──
+let holdUntil = 0, fadeFrom = null, fadeStart = 0;
+function loop(ts) {
+  if (!playing) return;
+  const speed = Number($('speed').value);
+  if (!lastTick) lastTick = ts;
+
+  if (fadeFrom && ts - fadeStart < FADE * 1000 / speed) {
+    const t = (ts - fadeStart) / (FADE * 1000 / speed);
+    ctx.save(); ctx.globalAlpha = 1 - t;
+    ctx.drawImage(fadeFrom, 0, 0); ctx.restore();
+    requestAnimationFrame(loop);
+    return;
+  }
+  fadeFrom = null;
+
+  if (ts >= holdUntil) {
+    const next = idx + 1;
+    if (next >= keys.length) { stop(); return; }
+    snapshotFade().then(() => {
+      renderAt(next, idx).then(() => {
+        holdUntil = performance.now() + holdSeconds(next) * 1000 / speed;
+        requestAnimationFrame(loop);
+      });
+    });
+    return;
+  }
+  requestAnimationFrame(loop);
+}
+
+let fadeBuf = document.createElement('canvas');
+function snapshotFade() {
+  fadeBuf.width = canvas.width; fadeBuf.height = canvas.height;
+  fadeBuf.getContext('2d').drawImage(canvas, 0, 0);
+  fadeFrom = fadeBuf;
+  fadeStart = performance.now();
+  return Promise.resolve();
+}
+
+function play() {
+  if (idx >= keys.length - 1) renderAt(0, null);
+  playing = true; $('play').textContent = '暂停';
+  holdUntil = 0; fadeFrom = null; lastTick = 0;
+  requestAnimationFrame(loop);
+}
+function stop() { playing = false; $('play').textContent = '播放'; }
+
+// ── 启动 ──
+let overlayImg = null;
+async function boot() {
+  const [sc, tl, sy] = await Promise.all([
+    fetch(`${DATA}/scene/ww2-europe.json`).then((r) => r.json()),
+    fetch(`${DATA}/control/ww2_timeline.json`).then((r) => r.json()),
+    fetch(`${DATA}/style/ww2_dark.json`).then((r) => r.json()),
+  ]);
+  scene = sc; style = sy;
+  timeline = new ControlTimeline(tl);
+
+  layout = new Layout(Object.assign({}, scene.layout, { mode: scene.layout.mode }));
+  canvas = $('stage'); ctx = canvas.getContext('2d');
+  applyQuality();
+
+  keys = buildDates();
+  $('nkeys').textContent = keys.length;
+  $('slider').max = keys.length - 1;
+
+  // 面板尺寸按全片最宽的一行预先固定：每帧按当帧长度算宽度的话，
+  // 交叉淡入会让上一帧面板外的地名标注透进下一帧面板里。
+  tickerBox = renderer.tickerBox(canvas.width, canvas.height,
+    keys.map((d) => timeline.recentLines(d, 3)));
+
+  // 时间轴上的事件刻度
+  const evDates = new Set(timeline.events.map((e) => String(e.date).slice(0, 10)));
+  $('ticks').innerHTML = keys.map((d, i) => {
+    const p = (i / (keys.length - 1)) * 100;
+    return `<i class="${evDates.has(d) ? 'ev' : ''}" style="left:${p}%"></i>`;
+  }).join('');
+
+  $('legend').innerHTML = scene.legend.map(([n, c]) =>
+    `<div class="legendItem"><span class="swatch" style="background:${c}"></span>${n}</div>`).join('');
+
+  $('hint').style.display = 'none';
+  await renderAt(0, null);
+  $('hint').style.display = 'block';
+  $('hint').textContent = '点「播放」看 1939→1945 的实时演变，或拖动下方时间轴';
+
+  overlayImg = new Image();
+  overlayImg.src = '../output/maps/ww2_1941_control_horizontal_16x9.png';
+}
+
+function applyQuality() {
+  const ss = Number($('ss').value);
+  canvas.width = layout.width * ss;
+  canvas.height = layout.height * ss;
+  canvas.style.aspectRatio = `${layout.width} / ${layout.height}`;
+  renderer = new Renderer(style, layout, { projection: scene.projection, supersample: ss });
+  geoCache.clear();
+}
+
+// ── 交互 ──
+$('play').onclick = () => (playing ? stop() : play());
+$('slider').oninput = (e) => { stop(); renderAt(Number(e.target.value), null); };
+$('ss').onchange = async () => { stop(); applyQuality(); await renderAt(idx, null); };
+$('overlay').onchange = () => renderAt(idx, null);
+
+$('png').onclick = () => {
+  const a = document.createElement('a');
+  a.download = `histmap_${keys[idx]}.png`;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+};
+
+let recorder = null;
+$('rec').onclick = () => {
+  if (recorder) { recorder.stop(); return; }
+  const stream = canvas.captureStream(30);
+  const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+    ? 'video/webm;codecs=vp9' : 'video/webm';
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12e6 });
+  const chunks = [];
+  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'ww2_1939-1945_browser.webm';
+    a.click();
+    $('recState').textContent = `完成 ${(blob.size / 1048576).toFixed(1)} MB`;
+    $('rec').textContent = '录制 WebM';
+    recorder = null;
+  };
+  renderAt(0, null).then(() => {
+    recorder.start();
+    $('rec').textContent = '停止录制';
+    $('recState').textContent = '录制中…';
+    play();
+  });
+};
+
+// FPS 计
+let fpsT0 = performance.now();
+setInterval(() => {
+  const now = performance.now();
+  $('fps').textContent = (frameCount / ((now - fpsT0) / 1000)).toFixed(0);
+  frameCount = 0; fpsT0 = now;
+}, 1000);
+
+boot().catch((e) => {
+  $('hint').textContent = '加载失败：' + e.message + '（请用 HTTP 服务打开，见 README）';
+  console.error(e);
+});
+</script>
+</body>
+</html>
