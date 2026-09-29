@@ -9,7 +9,7 @@
 浏览器的同源策略会拦掉 `file://` 下的这两件事。所以起一个静态服务：
 
 ```powershell
-cd D:\history-map
+cd history-map
 python -m http.server 8809
 # 然后打开 http://127.0.0.1:8809/web/index.html
 ```
@@ -21,7 +21,7 @@ python -m http.server 8809
 `data/web/` 是**构建产物**，不在版本库里。生成它：
 
 ```powershell
-cd D:\history-map
+cd history-map
 python src\export_web_data.py
 ```
 

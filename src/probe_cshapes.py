@@ -4,8 +4,10 @@ import json
 import os
 from collections import Counter
 
-PATH = r"D:\history-map\data\cache\CShapes-2.0.geojson"
-OUT = r"D:\history-map\cshapes-probe.txt"
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join(ROOT, "data", "cache", "CShapes-2.0.geojson")
+OUT = os.path.join(ROOT, "output", "cshapes-probe.txt")
+os.makedirs(os.path.dirname(OUT), exist_ok=True)
 
 L = []
 with open(PATH, encoding="utf-8") as f:
