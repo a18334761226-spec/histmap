@@ -3,548 +3,1013 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>histmap · 历史地图生成器</title>
+<title>histmap · 历史地图工作台</title>
 <style>
-  :root{
-    --bg:#0f0d0a; --panel:#17151210; --paper:#efe7d6; --paper2:#e6dcc7;
-    --ink:#2b2620; --ink2:#6b6154; --line:#c9bda6; --line2:#8d8튼;
-    --accent:#8c3a2e; --accent2:#3f6b8a; --ok:#3d7a4e; --err:#a33;
-    --mono:"SFMono-Regular",Consolas,Menlo,monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);
-    color:var(--ink);font:15px/1.6 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}
-  button,input,select,textarea{font:inherit;color:inherit}
-  button{cursor:pointer}
+/* ══════════════════════════════════════════════════════════════
+   纸墨工作台 · 设计令牌
+   ------------------------------------------------------------------
+   配色锁定：一套纸墨中性色 + 唯一一个朱砂强调色（--cinnabar）。
+   页面里所有可点的东西都用它，不再出现第二个强调色。
+   圆角锁定：只有三档 —— 2px（小块）/ 4px（控件）/ 8px（面板与浮层）。
+   ══════════════════════════════════════════════════════════════ */
+:root{
+  --paper:#efe7d6; --paper-hi:#f8f3e8; --paper-lo:#e5dbc6; --panel:#f3ecdd;
+  --ink:#241f19; --ink-2:#5d5445; --ink-3:#8a7f6c;
+  --line:#cfc3aa; --line-2:#b6a88c;
+  --cinnabar:#9c3b2c; --cinnabar-hi:#b04a38; --cinnabar-lo:#7d2e22;
+  --ok:#3f6f4a; --warn:#8a6a1f;
+  --r-s:2px; --r-m:4px; --r-l:8px;
+  --mono:"SFMono-Regular",Consolas,"Cascadia Mono",Menlo,monospace;
+  --sans:"Microsoft YaHei","PingFang SC","Hiragino Sans GB",system-ui,sans-serif;
+  --shadow:0 10px 30px rgba(48,38,24,.16);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);
+  color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none;padding:0}
+:focus-visible{outline:2px solid var(--cinnabar);outline-offset:1px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:9px}
+::-webkit-scrollbar-track{background:transparent}
 
-  /* ── 顶栏 ── */
-  header{height:52px;display:flex;align-items:center;gap:14px;padding:0 18px;
-    border-bottom:1px solid var(--line);background:linear-gradient(#f7f1e4,#efe7d6)}
-  header .logo{font-weight:800;letter-spacing:.02em;font-size:16px}
-  header .logo span{color:var(--accent)}
-  header .sub{font-size:12px;color:var(--ink2)}
-  header .right{margin-left:auto;display:flex;align-items:center;gap:10px}
-  .btn{border:1px solid var(--line);background:rgba(255,255,255,.5);
-    border-radius:4px;padding:6px 12px;font-size:13px;transition:.12s}
-  .btn:hover{border-color:var(--accent);background:#fff}
-  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  .btn.primary:hover{background:#7a3227}
-  .btn:disabled{opacity:.45;cursor:not-allowed}
-  .dot{width:7px;height:7px;border-radius:50%;background:#bbb;display:inline-block}
-  .dot.on{background:var(--ok)}
+/* ── 通用控件 ── */
+.btn{border:1px solid var(--line-2);background:var(--paper-hi);border-radius:var(--r-m);
+  padding:6px 11px;font-size:13px;transition:background .12s,border-color .12s,transform .06s;
+  white-space:nowrap;display:inline-flex;align-items:center;gap:6px;justify-content:center;
+  color:var(--ink);text-decoration:none}
+.btn:hover{background:#fff;border-color:var(--cinnabar)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn.pri{background:var(--cinnabar);border-color:var(--cinnabar);color:#fff;font-weight:600}
+.btn.pri:hover{background:var(--cinnabar-hi);border-color:var(--cinnabar-hi)}
+.btn.sm{padding:3px 8px;font-size:12px}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ink-2)}
+.btn.ghost:hover{background:rgba(156,59,44,.08);border-color:transparent;color:var(--cinnabar)}
+select,input[type=text],input[type=number],textarea{
+  border:1px solid var(--line-2);background:#fff;border-radius:var(--r-m);
+  padding:5px 7px;font-size:13px;width:100%}
+select:focus,input:focus,textarea:focus{outline:none;border-color:var(--cinnabar)}
+label{font-size:12px;color:var(--ink-2)}
+.mono{font-family:var(--mono)}
+.muted{color:var(--ink-3)}
+.tiny{font-size:11.5px}
 
-  /* ── 主体两栏 ── */
-  main{height:calc(100% - 52px);display:grid;grid-template-columns:340px minmax(0,1fr);
-    min-height:0;overflow:hidden}
-  .side{border-right:1px solid var(--line);display:flex;flex-direction:column;
-    min-height:0;min-width:0;overflow:hidden;background:#f2ebdd}
-  .side h3{font-size:12px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--ink2);margin:0;padding:11px 16px 7px;font-weight:700;flex:none}
-  /* 对话占固定比例且内部滚动；下半部分自己滚。两者都不许把父容器撑破 */
-  .chat{display:flex;flex-direction:column;min-height:0;flex:0 0 42%;
-    border-bottom:1px solid var(--line)}
-  #msgs{flex:1;overflow-y:auto;padding:4px 14px 10px;min-height:0}
-  .sideScroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:12px}
-  .m{margin-bottom:10px;font-size:13.5px;line-height:1.62}
-  .m.u{text-align:right}
-  .m .b{display:inline-block;padding:7px 11px;border-radius:9px;max-width:92%;
-    text-align:left;white-space:pre-wrap;word-break:break-word}
-  .m.u .b{background:var(--accent);color:#fff;border-bottom-right-radius:2px}
-  .m.a .b{background:rgba(255,255,255,.72);border:1px solid var(--line);
-    border-bottom-left-radius:2px}
-  .m .hint{font-size:11.5px;color:var(--ink2);margin-top:4px}
-  .composer{padding:8px 12px 12px;display:flex;gap:8px;align-items:flex-end}
-  .composer textarea{flex:1;resize:none;height:60px;padding:8px 10px;
-    border:1px solid var(--line);border-radius:6px;background:#fff;font-size:13.5px}
-  .composer textarea:focus{outline:none;border-color:var(--accent)}
+/* ── 顶栏 ── */
+header{height:54px;display:flex;align-items:center;gap:16px;padding:0 16px;
+  border-bottom:1px solid var(--line);background:var(--paper-hi);flex:none}
+.brand{font-size:15px;font-weight:800;letter-spacing:.01em;flex:none}
+.brand i{color:var(--cinnabar);font-style:normal}
+.brand em{display:block;font-size:10.5px;font-weight:400;color:var(--ink-3);
+  letter-spacing:.06em;font-style:normal;margin-top:-3px}
+.scenes{display:flex;gap:4px;flex:1;min-width:0;overflow-x:auto}
+.scene{border:1px solid transparent;border-radius:var(--r-m);padding:4px 10px;
+  font-size:13px;color:var(--ink-2);white-space:nowrap;transition:.12s;text-align:left}
+.scene:hover{background:rgba(255,255,255,.7)}
+.scene.on{background:var(--paper-lo);border-color:var(--line-2);color:var(--ink);font-weight:600}
+.scene small{display:block;font-size:10px;color:var(--ink-3);font-weight:400}
+.scene.on small{color:var(--cinnabar)}
+.hact{display:flex;align-items:center;gap:8px;flex:none}
+#keyDot{width:6px;height:6px;border-radius:50%;background:var(--line-2);display:inline-block}
+#keyDot.on{background:var(--ok)}
 
-  /* 参数 */
-  .params{padding:0 16px 14px;display:grid;gap:9px}
-  .f{display:grid;grid-template-columns:52px 1fr;gap:9px;align-items:center;
-    font-size:13px}
-  .f label{color:var(--ink2)}
-  .f select,.f input[type=text]{width:100%;padding:5px 8px;border:1px solid var(--line);
-    border-radius:4px;background:#fff;font-size:13px}
-  .f input[type=range]{width:100%;accent-color:var(--accent)}
-  .daterow{display:flex;align-items:center;gap:8px}
-  .daterow .d{font-family:var(--mono);font-size:13px;min-width:96px;font-weight:700}
+/* ── 三区主体 ── */
+main{height:calc(100% - 54px);display:grid;
+  grid-template-columns:270px minmax(320px,1fr) 292px;min-height:0;overflow:hidden}
+.col{min-height:0;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+.col.l{border-right:1px solid var(--line);background:var(--panel)}
+.col.r{border-left:1px solid var(--line);background:var(--panel);
+  display:flex;flex-direction:column}
+.rScroll{flex:1;min-height:0;overflow-y:auto}
+/* 主操作钉在右栏底部：它是最该随手能点到的东西，不该掉到折叠线以下 */
+.rFoot{flex:none;border-top:1px solid var(--line-2);background:var(--paper-lo);
+  padding:10px 14px 12px;box-shadow:0 -6px 18px rgba(48,38,24,.07)}
+.sect{border-bottom:1px solid var(--line);flex:none}
+.sect:last-child{border-bottom:none}
+h3{margin:0;padding:9px 14px 7px;font-size:11px;letter-spacing:.13em;font-weight:700;
+  color:var(--ink-3);display:flex;align-items:center;gap:8px;flex:none}
+h3 .sp{margin-left:auto;letter-spacing:0;font-weight:400;font-size:11px}
+.pad{padding:0 14px 12px}
 
-  /* 风格参考 */
-  .styl{flex:1;min-height:0;display:flex;flex-direction:column}
-  #drop{margin:0 16px;border:1.5px dashed var(--line);border-radius:8px;
-    padding:14px;text-align:center;color:var(--ink2);font-size:13px;
-    cursor:pointer;transition:.15s;background:rgba(255,255,255,.35)}
-  #drop:hover,#drop.over{border-color:var(--accent);background:#fff}
-  #drop img{max-width:100%;max-height:76px;border-radius:4px;display:block;margin:0 auto 6px}
-  .pal{display:flex;gap:4px;margin-top:8px;justify-content:center;flex-wrap:wrap}
-  .pal i{width:18px;height:18px;border-radius:3px;border:1px solid rgba(0,0,0,.15)}
-  .advice{font-size:11.5px;color:var(--ink2);margin:8px 16px 0;line-height:1.5}
-  .srcline{font-size:11px;color:var(--ink2);line-height:1.55;
-    background:rgba(140,58,46,.06);border-left:2px solid var(--accent);
-    padding:7px 9px;border-radius:0 3px 3px 0;display:none}
+/* ── 分镜 ── */
+.sbFill{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;
+  padding:0 14px 8px}
+.sbFill .arrow{color:var(--ink-3);font-size:12px}
+.sbFill select{font-size:12px;padding:4px 5px}
+#sbList{flex:1;min-height:0;overflow-y:auto;padding:0 8px 8px}
+/* 一行 = 序号 + 小缩略图 + 年份/时长/文案。
+   缩略图不能占满行宽：那样一行要 115px，一屏只放得下 5 帧，146 帧的题材没法用。 */
+.frame{display:grid;grid-template-columns:18px 62px 1fr;gap:6px;align-items:center;
+  padding:3px 5px;border:1px solid transparent;border-radius:var(--r-m);
+  cursor:pointer;transition:.1s;position:relative}
+.frame:hover{background:rgba(255,255,255,.66)}
+.frame.on{background:#fff;border-color:var(--cinnabar)}
+.frame .n{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);text-align:right}
+.frame.on .n{color:var(--cinnabar);font-weight:700}
+.frame .yr{font-size:13px;font-weight:600}
+.frame .cap{font-size:10.5px;color:var(--ink-3);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.frame .hold{font-family:var(--mono);font-size:10.5px;color:var(--ink-3);
+  background:var(--paper-lo);border-radius:var(--r-s);padding:1px 5px;margin-left:4px}
+/* 操作按钮浮在行右上角，不占布局高度 */
+.frame .ops{position:absolute;right:3px;top:3px;display:flex;gap:2px;
+  opacity:0;transition:.1s;background:linear-gradient(90deg,transparent,#fff 26%);
+  padding-left:12px;border-radius:var(--r-s)}
+.frame:hover .ops,.frame.on .ops{opacity:1}
+.frame .ops button{width:19px;height:19px;border-radius:var(--r-s);font-size:11px;
+  color:var(--ink-2);line-height:1;display:grid;place-items:center;background:#fff;
+  border:1px solid var(--line)}
+.frame .ops button:hover{background:var(--cinnabar);border-color:var(--cinnabar);color:#fff}
+.frame .thumb{width:62px;height:35px;object-fit:cover;border-radius:var(--r-s);
+  border:1px solid var(--line);display:block;background:var(--paper-lo)}
+.frame .nothumb{width:62px;height:35px;border-radius:var(--r-s);border:1px dashed var(--line);
+  display:block;background:rgba(255,255,255,.5)}
+.frame .body{min-width:0}
+.sbSum{display:flex;align-items:center;gap:10px;padding:7px 14px;border-top:1px solid var(--line);
+  font-size:11.5px;color:var(--ink-2);flex:none;background:var(--paper-lo)}
+.sbSum b{font-family:var(--mono);color:var(--ink)}
+.emptySb{padding:16px 14px;font-size:12.5px;color:var(--ink-3);line-height:1.75;text-align:center}
 
-  /* ── 结果区 ── */
-  .stage{display:flex;flex-direction:column;min-height:0;background:
-    radial-gradient(120% 80% at 50% 0%, #f7f1e4 0%, #e8dfcc 70%)}
-  .toolbar{display:flex;align-items:center;gap:10px;padding:12px 18px;
-    border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .toolbar .meta{font-size:12px;color:var(--ink2);margin-left:auto;
-    font-family:var(--mono)}
-  .view{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
-    padding:18px;position:relative}
-  .view img,.view video{max-width:100%;max-height:100%;border-radius:3px;
-    box-shadow:0 12px 40px rgba(0,0,0,.28);background:#000}
-  .empty{text-align:center;color:var(--ink2);font-size:14px;line-height:1.9}
-  .empty b{color:var(--ink);font-size:16px;display:block;margin-bottom:6px}
-  .spinner{width:26px;height:26px;border:3px solid var(--line);
-    border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;
-    margin:0 auto 12px}
-  @keyframes sp{to{transform:rotate(360deg)}}
-  .bar{height:5px;background:var(--line);border-radius:3px;overflow:hidden;
-    margin:12px auto 0;max-width:340px}
-  .bar i{display:block;height:100%;background:var(--accent);width:0;transition:.3s}
+/* ── 画布 ── */
+.canvas{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  padding:16px;position:relative;
+  background:radial-gradient(120% 90% at 50% 0%,#faf6ec 0%,#e3d9c3 100%)}
+.canvas .plate{max-width:100%;max-height:100%;border-radius:var(--r-s);
+  box-shadow:0 14px 44px rgba(48,38,24,.3);display:block;background:#fff}
+.canvas video{max-width:100%;max-height:100%;border-radius:var(--r-s);
+  box-shadow:var(--shadow);background:#000}
+.canvas .stage{width:100%;height:100%;display:flex;flex-direction:column;min-height:0}
+.hintbox{text-align:center;color:var(--ink-2);max-width:360px;font-size:13px;line-height:1.85}
+.hintbox b{display:block;font-size:15px;color:var(--ink);margin-bottom:7px}
+.hintbox .k{font-family:var(--mono);background:var(--paper-lo);border-radius:var(--r-s);
+  padding:1px 5px;font-size:12px}
+.spin{width:24px;height:24px;border:2.5px solid var(--line);border-top-color:var(--cinnabar);
+  border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 12px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 
-  /* ── 画廊（先出图，最后才是视频） ── */
-  .galleryWrap{width:100%;height:100%;display:flex;flex-direction:column;
-    min-height:0;padding:4px 2px}
-  .gline{display:flex;align-items:center;gap:10px;font-size:13.5px;
-    color:var(--ink2);margin-bottom:6px}
-  .gline b{color:var(--ink)}
-  .gline .pct{margin-left:auto;font-family:var(--mono);font-size:12px}
-  .gallery{flex:1;min-height:0;overflow-y:auto;display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;
-    margin-top:12px;align-content:start}
-  .cell{margin:0;border:1px solid var(--line);border-radius:4px;overflow:hidden;
-    background:#fff;position:relative;aspect-ratio:4/3}
-  .cell img{width:100%;height:100%;object-fit:cover;display:block}
-  .cell figcaption{position:absolute;left:0;bottom:0;background:rgba(20,16,12,.72);
-    color:#f0e9dc;font-size:10.5px;padding:1px 6px;border-radius:0 3px 0 0;
-    font-family:var(--mono)}
-  .cell.ph{background:#e9e1d0;display:flex;align-items:center;justify-content:center}
-  .cell.bad{background:#f3ded8;border-color:#c9a08f}
-  .spin{width:16px;height:16px;border:2px solid var(--line);
-    border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite}
-  .galleryWrap video{width:100%;max-height:46%;border-radius:4px;background:#000}
-  select.mini{padding:4px 6px;font-size:12.5px;min-width:0;flex:1}
+/* ── 走带 ── */
+.transport{display:flex;align-items:center;gap:8px;padding:8px 14px;
+  border-bottom:1px solid var(--line);background:var(--paper-hi);flex:none}
+.transport .tp{width:28px;height:28px;border:1px solid var(--line-2);
+  border-radius:var(--r-m);background:var(--paper-hi);display:grid;place-items:center;
+  font-size:11px;transition:.12s}
+.transport .tp:hover{border-color:var(--cinnabar);background:#fff}
+.transport .tp:disabled{opacity:.35;cursor:not-allowed}
+.transport .tp.rec{background:var(--cinnabar);border-color:var(--cinnabar);color:#fff}
+.time{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+.track{flex:1;height:5px;background:var(--line);border-radius:3px;overflow:hidden;min-width:40px}
+.track i{display:block;height:100%;background:var(--cinnabar);width:0;transition:width .1s linear}
 
-  /* ── 设置弹层 ── */
-  .mask{position:fixed;inset:0;background:rgba(20,16,12,.5);display:none;
-    align-items:center;justify-content:center;z-index:50}
-  .mask.on{display:flex}
-  .modal{background:var(--paper);border-radius:8px;width:min(560px,92vw);
-    padding:26px 28px;box-shadow:0 24px 70px rgba(0,0,0,.4)}
-  .modal h2{margin:0 0 6px;font-size:19px}
-  .modal p.h{margin:0 0 20px;font-size:13px;color:var(--ink2)}
-  .modal .f{grid-template-columns:108px 1fr;margin-bottom:12px}
-  .modal .f label{font-size:13px}
-  .modal .f input,.modal .f select{width:100%;padding:7px 10px;border:1px solid var(--line);
-    border-radius:5px;background:#fff;font-size:13.5px}
-  .modal .note{font-size:12px;color:var(--ink2);background:rgba(140,58,46,.07);
-    border-left:3px solid var(--accent);padding:10px 12px;border-radius:0 4px 4px 0;
-    margin:14px 0 18px;line-height:1.6}
-  .modal .acts{display:flex;gap:10px;justify-content:flex-end}
-  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
-    background:#221f1a;color:#f0e9dc;padding:10px 18px;border-radius:6px;
-    font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:99}
-  .toast.on{opacity:1}
-  @media(max-width:900px){main{grid-template-columns:1fr}.side{display:none}}
+/* ── 胶片条 ── */
+.film{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;flex:none;
+  border-bottom:1px solid var(--line);background:var(--paper-hi)}
+.film img{height:42px;border-radius:var(--r-s);border:1px solid var(--line);
+  cursor:pointer;flex:none;opacity:.68;transition:.12s}
+.film img:hover{opacity:1;border-color:var(--cinnabar)}
+.film img.on{opacity:1;border-color:var(--cinnabar);box-shadow:0 0 0 1px var(--cinnabar)}
+
+/* ── 参数面板 ── */
+.prow{display:grid;grid-template-columns:52px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+.prow>label{padding-top:2px}
+.seg{display:flex;border:1px solid var(--line-2);border-radius:var(--r-m);overflow:hidden}
+.seg button{flex:1;padding:5px 3px;font-size:12px;background:var(--paper-hi);transition:.12s;
+  border-right:1px solid var(--line-2)}
+.seg button:last-child{border-right:none}
+.seg button:hover{background:#fff}
+.seg button.on{background:var(--cinnabar);color:#fff;font-weight:600}
+.styles{display:grid;gap:5px}
+.styleCard{display:grid;grid-template-columns:64px 1fr;gap:8px;align-items:center;
+  border:1px solid var(--line);border-radius:var(--r-m);padding:4px;background:var(--paper-hi);
+  cursor:pointer;transition:.12s;text-align:left;width:100%}
+.styleCard:hover{border-color:var(--cinnabar);background:#fff}
+.styleCard.on{border-color:var(--cinnabar);background:#fff;box-shadow:inset 0 0 0 1px var(--cinnabar)}
+.styleCard img,.styleCard .skel{width:64px;height:36px;object-fit:cover;
+  border-radius:var(--r-s);display:block;background:var(--paper-lo);border:1px solid var(--line)}
+.styleCard .t{font-size:12.5px;font-weight:600;line-height:1.3;display:block}
+.styleCard .d{font-size:10.5px;color:var(--ink-3);line-height:1.35;margin-top:1px;display:block}
+#drop{margin:0 14px 10px;border:1.5px dashed var(--line-2);border-radius:var(--r-m);
+  padding:11px;text-align:center;color:var(--ink-3);font-size:12px;cursor:pointer;
+  transition:.14s;background:rgba(255,255,255,.4)}
+#drop:hover,#drop.over{border-color:var(--cinnabar);background:#fff;color:var(--ink-2)}
+#drop img{max-width:100%;max-height:60px;border-radius:var(--r-s);display:block;margin:0 auto 5px}
+.pal{display:flex;gap:3px;justify-content:center;margin-top:6px;flex-wrap:wrap}
+.pal i{width:15px;height:15px;border-radius:var(--r-s);border:1px solid rgba(0,0,0,.14)}
+.txtGrid{display:grid;gap:7px}
+.note{font-size:11px;line-height:1.55;color:var(--ink-2);background:rgba(156,59,44,.06);
+  border-left:2px solid var(--cinnabar);padding:7px 9px;border-radius:0 var(--r-m) var(--r-m) 0}
+.exportGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.exportGrid .full{grid-column:1/-1}
+
+/* ── 作品库抽屉 ── */
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(400px,92vw);background:var(--paper-hi);
+  border-left:1px solid var(--line-2);box-shadow:-14px 0 44px rgba(48,38,24,.2);
+  transform:translateX(102%);transition:transform .22s cubic-bezier(.3,.8,.3,1);
+  z-index:60;display:flex;flex-direction:column}
+.drawer.on{transform:none}
+.drawer .dh{display:flex;align-items:center;gap:10px;padding:14px 16px;
+  border-bottom:1px solid var(--line);flex:none}
+.drawer .dh b{font-size:15px}
+#jobList{flex:1;overflow-y:auto;padding:10px 12px}
+.job{border:1px solid var(--line);border-radius:var(--r-m);background:#fff;
+  padding:8px;margin-bottom:8px;display:grid;grid-template-columns:78px 1fr;gap:9px}
+.job img,.job .ph{width:78px;height:44px;object-fit:cover;border-radius:var(--r-s);
+  background:var(--paper-lo);border:1px solid var(--line)}
+.job .ph{display:grid;place-items:center;font-size:10px;color:var(--ink-3)}
+.job .jt{font-size:12.5px;font-weight:600;margin-bottom:2px}
+.job .jm{font-size:10.5px;color:var(--ink-3);line-height:1.5;font-family:var(--mono)}
+.job .ja{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap}
+.badge{font-size:10px;padding:1px 5px;border-radius:var(--r-s);border:1px solid var(--line-2);
+  color:var(--ink-2);font-weight:400}
+.badge.done{background:rgba(63,111,74,.12);border-color:var(--ok);color:var(--ok)}
+.badge.running{background:rgba(138,106,31,.12);border-color:var(--warn);color:var(--warn)}
+.badge.failed{background:rgba(156,59,44,.12);border-color:var(--cinnabar);color:var(--cinnabar)}
+
+/* ── 设置浮层 ── */
+.mask{position:fixed;inset:0;background:rgba(36,31,25,.42);display:none;z-index:70;
+  align-items:center;justify-content:center;padding:20px}
+.mask.on{display:flex}
+.modal{background:var(--paper);border-radius:var(--r-l);width:min(540px,94vw);
+  max-height:90vh;overflow-y:auto;padding:22px 24px;box-shadow:0 24px 70px rgba(0,0,0,.36)}
+.modal h2{margin:0 0 4px;font-size:18px}
+.modal p.h{margin:0 0 16px;font-size:12.5px;color:var(--ink-2)}
+.modal .f{display:grid;grid-template-columns:104px 1fr;gap:10px;align-items:center;margin-bottom:11px}
+.modal .f input,.modal .f select{padding:7px 9px}
+.modal .acts{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+/* ── 提示 ── */
+#toast{position:fixed;bottom:20px;left:50%;transform:translate(-50%,14px);
+  background:#241f19;color:#f4ecdd;padding:9px 16px;border-radius:var(--r-m);font-size:13px;
+  opacity:0;pointer-events:none;transition:.22s;z-index:90;max-width:80vw;text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+.skel{background:linear-gradient(90deg,var(--paper-lo) 25%,#f6f0e3 50%,var(--paper-lo) 75%);
+  background-size:200% 100%;animation:sk 1.3s linear infinite;border-radius:var(--r-s)}
+@keyframes sk{to{background-position:-200% 0}}
+
+@media(max-width:1180px){main{grid-template-columns:238px minmax(280px,1fr) 268px}}
+@media(max-width:900px){
+  main{grid-template-columns:1fr;grid-template-rows:auto minmax(200px,1fr) auto;
+    height:auto;overflow-y:auto}
+  html,body{overflow:auto}
+  .col.l,.col.r{border:none;border-bottom:1px solid var(--line);max-height:34vh;overflow-y:auto}
+  #sbList{max-height:30vh}
+}
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">hist<span>map</span></div>
-  <div class="sub">输入一句话，出一张历史地图</div>
-  <div class="right">
-    <span id="keyState" class="sub"><span class="dot" id="dot"></span> <span id="keyText">未填 Key</span></span>
-    <button class="btn" id="btnSettings">设置</button>
+  <div class="brand">hist<i>map</i><em>历史地图工作台</em></div>
+  <div class="scenes" id="scenes"></div>
+  <div class="hact">
+    <button class="btn sm" id="btnJobs">作品库 <span class="muted mono tiny" id="jobCount"></span></button>
+    <span class="tiny muted" id="keyState"><span id="keyDot"></span><span id="keyText"> 未填 Key</span></span>
+    <button class="btn sm" id="btnSettings">设置</button>
   </div>
 </header>
 
 <main>
-  <div class="side">
-    <!-- 对话 -->
-    <div class="chat">
-      <h3>对话</h3>
-      <div id="msgs"></div>
-      <div class="composer">
-        <textarea id="chatIn" placeholder="例如：唐宪宗二年的军阀格局图，宣纸风格，方形&#10;或者：改成竖屏，加个视频"></textarea>
-        <button class="btn primary" id="btnSend">发送</button>
+  <!-- ══ 左：分镜 ══ -->
+  <div class="col l">
+    <div class="sect">
+      <h3>按区间填充<span class="sp tiny" id="rangeHint"></span></h3>
+      <div class="sbFill">
+        <select id="pFrom"></select>
+        <span class="arrow">到</span>
+        <select id="pTo"></select>
+      </div>
+      <div class="pad" style="padding-top:0">
+        <button class="btn sm" id="btnFill" style="width:100%">用这个区间重建分镜</button>
       </div>
     </div>
 
-    <!-- 参数 + 风格参考（放在可滚动区里，避免把侧栏撑破） -->
-    <div class="sideScroll">
-    <div>
-      <h3>参数</h3>
-      <div class="params">
-        <div class="f"><label>场景</label><select id="pScene"></select></div>
-        <div class="f"><label>单张</label>
-          <div class="daterow">
-            <input type="range" id="pDate" min="0" max="0" value="0">
-            <span class="d" id="pDateLbl">—</span>
+    <h3>分镜<span class="sp"><button class="btn ghost sm" id="btnAddFrame">加一帧</button></span></h3>
+    <div id="sbList"></div>
+    <div class="sbSum">
+      <span><b id="sbN">0</b> 帧</span>
+      <span>共 <b id="sbSec">0</b> 秒</span>
+      <span style="margin-left:auto"><button class="btn ghost sm" id="btnClearSb">清空</button></span>
+    </div>
+  </div>
+
+  <!-- ══ 中：画布 ══ -->
+  <div class="col">
+    <div class="transport">
+      <button class="tp" id="tpFirst" title="第一帧">|&lt;</button>
+      <button class="tp" id="tpPrev" title="上一帧">&lt;</button>
+      <button class="tp" id="tpPlay" title="按真实节奏预演">&#9654;</button>
+      <button class="tp" id="tpNext" title="下一帧">&gt;</button>
+      <button class="tp" id="tpLast" title="最后一帧">&gt;|</button>
+      <span class="time" id="tpTime">0.0 / 0.0 s</span>
+      <div class="track"><i id="tpBar"></i></div>
+      <span class="time" id="tpIdx">0 / 0</span>
+    </div>
+    <div class="canvas" id="canvas">
+      <div class="hintbox">
+        <b>分镜还是空的</b>
+        左边选一个年份区间，点 <span class="k">用这个区间重建分镜</span>。<br>
+        然后可以逐帧删、逐帧改文案、调每帧停留多久。
+      </div>
+    </div>
+    <div class="film" id="film" style="display:none"></div>
+  </div>
+
+  <!-- ══ 右：参数与导出 ══ -->
+  <div class="col r">
+   <div class="rScroll">
+    <div class="sect">
+      <h3>画面</h3>
+      <div class="pad">
+        <div class="prow"><label>主题</label><div class="seg" id="segTheme"></div></div>
+        <div class="prow"><label>尺寸</label><div class="seg" id="segSize"></div></div>
+        <div class="prow"><label>默认停留</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="pHold" min="0.1" max="3" step="0.05" value="0.6"
+                   style="flex:1;accent-color:var(--cinnabar)">
+            <span class="mono tiny" id="pHoldLbl" style="min-width:34px">0.6s</span>
           </div>
         </div>
-        <div class="f"><label>区间</label>
-          <div class="daterow">
-            <select id="pFrom" class="mini"></select>
-            <span style="color:var(--ink2)">→</span>
-            <select id="pTo" class="mini"></select>
-          </div>
-          <div id="rangeHint" style="grid-column:2;font-size:11.5px;color:var(--ink2)"></div>
+        <div class="tiny muted" style="margin-top:-2px">
+          分镜里没单独设时长的帧用这个值
         </div>
-        <div class="f"><label>主题</label><select id="pTheme"></select></div>
-        <div class="f"><label>质感</label><select id="pStyle"></select></div>
-        <div class="f"><label>尺寸</label><select id="pSize">
-          <option value="16x9">16:9 横屏</option>
-          <option value="9x16">9:16 竖屏</option>
-          <option value="4x3">4:3 方形</option>
-        </select></div>
-        <div id="srcNote" class="srcline"></div>
       </div>
     </div>
 
-    <!-- 风格参考图 -->
-    <div class="styl">
+    <div class="sect">
+      <h3>质感</h3>
+      <div class="pad"><div class="styles" id="styleList"></div></div>
+    </div>
+
+    <div class="sect">
       <h3>风格参考图</h3>
       <div id="drop">
         <div id="dropInner">拖一张图进来，或点这里选择<br>
-          <span style="font-size:11.5px">它只量色调/纹理/颗粒，不调模型</span></div>
+          <span class="tiny">只量色调、纹理、颗粒，不调模型</span></div>
         <input type="file" id="file" accept="image/*" hidden>
       </div>
-      <div class="pal" id="pal"></div>
-      <div class="advice" id="advice"></div>
+      <div class="pal" id="pal" style="margin-bottom:10px"></div>
     </div>
-    </div><!-- /sideScroll -->
-  </div>
 
-  <!-- 结果 -->
-  <div class="stage">
-    <div class="toolbar">
-      <button class="btn" id="btnRender">只出这一张</button>
-      <button class="btn primary" id="btnRun">出区间全部图片 → 视频</button>
-      <span class="meta" id="meta"></span>
-    </div>
-    <div class="view" id="view">
-      <div class="empty">
-        <b>还没有结果</b>
-        左边选一个年份区间，点「出区间全部图片 → 视频」。<br>
-        <span style="font-size:13px">它会先逐张出图给你看，全部出完才合成视频。</span>
+    <div class="sect">
+      <h3>本帧文案<span class="sp tiny" id="txtWhich"></span></h3>
+      <div class="pad">
+        <div class="txtGrid">
+          <div><label>标题</label>
+            <input type="text" id="tTitle" placeholder="留空就是用题材默认标题"></div>
+          <div><label>副标题</label>
+            <input type="text" id="tSub" placeholder="留空就是用事件副标题"></div>
+          <div><label>页脚口径</label>
+            <input type="text" id="tFoot" placeholder="留空就是用题材口径声明"></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn sm" id="btnApplyAll" style="flex:1">应用到全部帧</button>
+          <button class="btn sm" id="btnClearTxt" style="flex:1">清空本帧覆盖</button>
+        </div>
+        <div class="tiny muted" style="margin-top:6px">
+          留空表示「用题材默认」，不是「留白」。真想清掉一行，填一个空格。
+        </div>
+        <div class="note" id="srcNote" style="margin-top:10px;display:none"></div>
       </div>
     </div>
+   </div>
+
+   <div class="rFoot">
+     <div class="exportGrid">
+       <button class="btn" id="btnRender">出这一张</button>
+       <button class="btn" id="btnFrames">出全部图</button>
+       <button class="btn pri full" id="btnVideo">合成视频</button>
+       <button class="btn" id="btnZip">帧 ZIP</button>
+       <button class="btn" id="btnMp4">MP4</button>
+       <button class="btn ghost full" id="btnCopy">复制当前参数 JSON</button>
+     </div>
+   </div>
   </div>
 </main>
 
-<!-- 设置 -->
+<!-- ══ 作品库 ══ -->
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <b>作品库</b>
+    <span class="tiny muted">最近 20 单</span>
+    <button class="btn ghost sm" id="btnRefreshJobs" style="margin-left:auto">刷新</button>
+    <button class="btn ghost sm" id="btnCloseJobs">关闭</button>
+  </div>
+  <div id="jobList"></div>
+</div>
+
+<!-- ══ 设置 ══ -->
 <div class="mask" id="mask">
   <div class="modal">
     <h2>设置</h2>
-    <p class="h">Key 只存在这台机器的浏览器里，不会上传、不会写盘。</p>
-
+    <p class="h">Key 只存在这台机器的浏览器里。不上传、不写盘、不进日志。</p>
     <div class="f"><label>API 服务</label>
       <select id="sPreset">
-        <option value="https://api.siliconflow.cn/v1">硅基流动（国内直连，推荐）</option>
+        <option value="https://api.siliconflow.cn/v1">硅基流动（国内直连）</option>
         <option value="https://api-inference.modelscope.cn/v1">魔搭 ModelScope</option>
-        <option value="__custom__">自定义…</option>
-      </select>
-    </div>
-    <div class="f"><label>Base URL</label><input type="text" id="sBase"></div>
-    <div class="f"><label>API Key</label><input type="password" id="sKey" placeholder="sk-… 或 ms-…"></div>
-    <div class="f"><label>对话模型</label><select id="sChat"></select></div>
-    <div class="f"><label>出图模型</label><select id="sImage"></select></div>
-
+        <option value="__custom__">自定义</option>
+      </select></div>
+    <div class="f"><label>Base URL</label>
+      <input type="text" id="sBase" placeholder="https://api.siliconflow.cn/v1"></div>
+    <div class="f"><label>API Key</label>
+      <input type="text" id="sKey" placeholder="sk-…" autocomplete="off"></div>
+    <div class="f"><label>对话模型</label>
+      <input type="text" id="sChat" placeholder="Qwen/Qwen2.5-7B-Instruct"></div>
+    <div class="f"><label>出图模型</label>
+      <input type="text" id="sImage" placeholder="留空即可"></div>
     <div class="note">
-      <b>对话功能</b>需要一个能跑 LLM 的 key（上面的「对话模型」）。<br>
-      <b>出图和出片不需要 key</b> —— 渲染全部在本地用代码完成，零成本。<br>
-      「出图模型」只在你要用 AI 风格化时才用得上，而实测它会破坏地图数据，默认不用。
+      这个项目的图是代码画的，不调图像模型，出图模型那一栏留空就行。
+      但目前对话入口暂时收在设置里，主界面这一段是给以后接回来的。
     </div>
-
     <div class="acts">
-      <button class="btn" id="sClear">清空</button>
-      <button class="btn primary" id="sSave">保存</button>
+      <button class="btn ghost" id="sClear">清空</button>
+      <button class="btn pri" id="sSave">保存</button>
     </div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div id="toast"></div>
 
 <script>
-const $ = s => document.querySelector(s);
-const api = (p, opt={}) => {
-  const h = Object.assign({}, opt.headers||{});
-  // FormData 必须让浏览器自己设 Content-Type（带 boundary），
-  // 手写 application/json 会把 multipart 上传搞坏（踩过：报 [object Object]）
-  if (!(opt.body instanceof FormData)) h['Content-Type'] = 'application/json';
-  const cfg = JSON.parse(localStorage.getItem('histmap.cfg') || '{}');
-  if (cfg.key) h['X-Api-Key'] = cfg.key;
-  if (cfg.chat) h['X-Model'] = cfg.chat;
-  if (cfg.base) h['X-Base-Url'] = cfg.base;
-  return fetch(p, Object.assign({}, opt, {headers: h}));
-};
-/** 统一的错误提取：FastAPI 的 422 返回的是对象数组，直接拼会变成 [object Object] */
+'use strict';
+/* ══════════════════════════════════════════════════════════════
+   状态
+   ══════════════════════════════════════════════════════════════ */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+
+let SCENES = [], STYLES = [];
+let styleProfile = null;
+let cur = 0;                        // 选中帧下标
+let cart = [];                      // 分镜：[{date, hold?, title?, subtitle?, footer?}]
+let rendered = [];                  // 最近一次出图的帧 URL
+let renderedHolds = [];             // 与 rendered 一一对应的停留时长
+let lastJob = null;                 // {jid, res?}
+let playing = false, playTimer = null, playAcc = 0;
+
+const st = { scene:null, theme:'dark', style:'none', size:'16x9', hold:0.6 };
+const cfg = (() => {
+  try { return JSON.parse(localStorage.getItem('histmap.cfg') || '{}'); } catch(e){ return {}; }
+})();
+
+/* ══════════════════════════════════════════════════════════════
+   工具
+   ══════════════════════════════════════════════════════════════ */
+// 年份按「-」切，不要 slice(0,4)：980 是三位数，切出来会变成「980-」
+function ym(d){ return String(d || '').split('-')[0]; }
+function esc(s){ return String(s == null ? '' : s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function toast(m){
+  const t = $('#toast'); t.textContent = m; t.classList.add('on');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 3600);
+}
+// FastAPI 的 422 回的是对象数组，直接拼会变成 [object Object]
 function errText(detail, fallback){
-  if (!detail) return fallback;
+  if (!detail) return fallback || '失败';
   if (typeof detail === 'string') return detail;
-  if (Array.isArray(detail)) return detail.map(d => d.msg || d.message || JSON.stringify(d)).join('；');
+  if (Array.isArray(detail))
+    return detail.map(d => (d && (d.msg || d.message)) || JSON.stringify(d)).join('；');
   if (typeof detail === 'object') return detail.msg || detail.message || JSON.stringify(detail);
   return String(detail);
 }
-let toastT;
-function toast(msg){
-  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
-  clearTimeout(toastT); toastT = setTimeout(()=>t.classList.remove('on'), 2600);
+async function api(path, opt){
+  opt = opt || {};
+  const h = Object.assign({}, opt.headers || {});
+  if (cfg.key) h['X-Api-Key'] = cfg.key;
+  if (cfg.chat) h['X-Model'] = cfg.chat;
+  if (cfg.base) h['X-Base-Url'] = cfg.base;
+  // FormData 必须让浏览器自己带 boundary；手写 Content-Type 会让后端解不出来
+  if (!(opt.body instanceof FormData) && opt.body && !h['Content-Type'])
+    h['Content-Type'] = 'application/json';
+  return fetch(path, Object.assign({}, opt, { headers:h }));
 }
-const busy = (b) => { $('#btnRender').disabled = b; $('#btnRun').disabled = b;
-                      $('#btnSend').disabled = b; };
-
-// ── 状态 ──
-let SCENES = [], STYLES = [], state = {}, styleProfile = null, lastImage = null;
-
-// ── 对话渲染 ──
-function addMsg(role, text, hint){
-  const d = document.createElement('div');
-  d.className = 'm ' + (role === 'user' ? 'u' : 'a');
-  d.innerHTML = `<div class="b">${esc(text)}</div>` + (hint?`<div class="hint">${esc(hint)}</div>`:'');
-  $('#msgs').appendChild(d); $('#msgs').scrollTop = 1e9;
-  return d;
-}
-const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-
-// ── 设置 ──
-function loadCfg(){
-  const c = JSON.parse(localStorage.getItem('histmap.cfg') || '{}');
-  const on = !!c.key;
-  $('#dot').className = 'dot' + (on ? ' on' : '');
-  $('#keyText').textContent = on ? (c.chat || '已填 Key').split('/').pop() : '未填 Key';
-  return c;
-}
-async function openSettings(){
-  const c = loadCfg();
-  const m = await (await fetch('/api/models')).json();
-  const fill = (sel, arr, val) => {
-    sel.innerHTML = arr.map(x => `<option value="${x.id}">${x.label}</option>`).join('');
-    if (val) sel.value = val;
-  };
-  fill($('#sChat'), m.chat, c.chat);
-  fill($('#sImage'), m.image_edit, c.image);
-  $('#sKey').value = c.key || '';
-  $('#sBase').value = c.base || 'https://api.siliconflow.cn/v1';
-  const known = ['https://api.siliconflow.cn/v1','https://api-inference.modelscope.cn/v1'];
-  $('#sPreset').value = known.includes($('#sBase').value) ? $('#sBase').value : '__custom__';
-  $('#mask').classList.add('on');
-}
-$('#btnSettings').onclick = openSettings;
-$('#sPreset').onchange = e => { if (e.target.value !== '__custom__') $('#sBase').value = e.target.value; };
-$('#sSave').onclick = () => {
-  localStorage.setItem('histmap.cfg', JSON.stringify({
-    base: $('#sBase').value.trim(), key: $('#sKey').value.trim(),
-    chat: $('#sChat').value, image: $('#sImage').value }));
-  $('#mask').classList.remove('on'); loadCfg(); toast('已保存到本机浏览器');
-};
-$('#sClear').onclick = () => {
-  localStorage.removeItem('histmap.cfg'); $('#sKey').value = '';
-  loadCfg(); toast('已清空');
-};
-$('#mask').onclick = e => { if (e.target.id === 'mask') $('#mask').classList.remove('on'); };
-
-// ── 参数同步 ──
-// 年份从「-」处切，不要 slice(0,4)：980 年是三位数，切出来是「980- 年」。
-// 后端 int(str(date)[:4]) 踩过同一个坑。
-const ym = d => (d || '').split('-')[0] + ' 年';
-
-function fillRange(ds){
-  const opts = ds.map((d, i) => `<option value="${i}">${ym(d)}</option>`).join('');
-  $('#pFrom').innerHTML = opts;
-  $('#pTo').innerHTML = opts;
-  const cur = Math.max(0, ds.indexOf(state.date));
-  $('#pFrom').value = state.fromIdx != null ? state.fromIdx : 0;
-  $('#pTo').value = state.toIdx != null ? state.toIdx : ds.length - 1;
+function scene(){ return SCENES.find(s => s.id === st.scene) || null; }
+function frame(){ return cart[cur] || null; }
+function fmtSec(x){ return (Math.round(x * 10) / 10).toFixed(1); }
+function holdOf(f){ return f && Number(f.hold) > 0 ? Number(f.hold) : Number(st.hold); }
+function totalSec(){ return cart.reduce((a, f) => a + holdOf(f), 0); }
+function busy(b){
+  ['#btnRender','#btnFrames','#btnVideo','#btnZip','#btnMp4','#btnFill',
+   '#btnAddFrame','#btnClearSb','#btnApplyAll','#btnClearTxt'].forEach(s => {
+    const e = $(s); if (e) e.disabled = b;
+  });
 }
 
-function syncUI(){
-  $('#pScene').value = state.scene;
-  const sc = SCENES.find(s => s.id === state.scene);
-  const ds = sc ? sc.dates : [];
-  const i = Math.max(0, ds.indexOf(state.date));
-  const r = $('#pDate');
-  r.max = Math.max(0, ds.length - 1); r.value = i;
-  $('#pDateLbl').textContent = state.date || '—';
-  fillRange(ds);
-  $('#pTheme').innerHTML = (sc?sc.themes:['dark'])
-    .map(t => `<option value="${t}">${t==='dark'?'深色（短视频）':'浅色（古籍）'}</option>`).join('');
-  $('#pTheme').value = state.theme;
-  $('#pStyle').value = state.style || 'none';
-  $('#pSize').value = state.size || (sc?sc.default_size:'16x9');
-  updateRangeHint();
-  // 出处与口径：题材是数据，来源说明也写在数据里
-  const note = sc ? (sc.source_note || '') : '';
+/* ══════════════════════════════════════════════════════════════
+   装载
+   ══════════════════════════════════════════════════════════════ */
+async function boot(){
+  let r;
+  try { r = await (await fetch('/api/scenes')).json(); }
+  catch(e){ toast('连不上服务，确认 histmap_server 还在跑'); return; }
+  SCENES = r.scenes || [];
+  if (!SCENES.length){ toast('服务端没有题材'); return; }
+  st.scene = SCENES[0].id;
+  st.theme = (SCENES[0].themes || ['dark'])[0];
+  st.size  = SCENES[0].default_size || '16x9';
+
+  try {
+    const s = await (await fetch('/api/styles')).json();
+    STYLES = s.presets || [];
+  } catch(e){ STYLES = [{id:'none', label:'不加质感', desc:''}]; }
+
+  renderScenes(); renderStyles(); syncParams(); fillRange();
+  rebuildSb();                    // 打开就把默认题材的整个区间铺上，别让人对着空面板猜
+  loadCfg(); refreshJobCount();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   题材
+   ══════════════════════════════════════════════════════════════ */
+function renderScenes(){
+  $('#scenes').innerHTML = SCENES.map(s => {
+    const n = (s.dates || []).length;
+    return `<button class="scene${s.id === st.scene ? ' on' : ''}" data-id="${esc(s.id)}">
+      ${esc(s.title)}<small>${n} 个时间点</small></button>`;
+  }).join('');
+  $$('#scenes .scene').forEach(b => b.onclick = () => switchScene(b.dataset.id));
+}
+function switchScene(id){
+  if (id === st.scene) return;
+  st.scene = id;
+  const s = scene();
+  st.theme = (s.themes || ['dark'])[0];
+  st.size  = s.default_size || '16x9';
+  renderScenes(); syncParams(); fillRange(); rebuildSb(); renderOne();
+}
+
+/* ══════════════════════════════════════════════════════════════
+   参数
+   ══════════════════════════════════════════════════════════════ */
+function syncParams(){
+  const s = scene() || {};
+  $('#segTheme').innerHTML = (s.themes || ['dark']).map(t =>
+    `<button data-v="${esc(t)}" class="${t === st.theme ? 'on' : ''}">${
+      t === 'dark' ? '深色' : '浅色'}</button>`).join('');
+  $$('#segTheme button').forEach(b => b.onclick = () => {
+    st.theme = b.dataset.v; syncParams(); if (frame()) renderOne(true);
+  });
+  const sizes = [['16x9','16:9'],['9x16','9:16'],['4x3','4:3'],['1x1','1:1']];
+  $('#segSize').innerHTML = sizes.map(([v, l]) =>
+    `<button data-v="${v}" class="${v === st.size ? 'on' : ''}">${l}</button>`).join('');
+  $$('#segSize button').forEach(b => b.onclick = () => {
+    st.size = b.dataset.v; syncParams(); if (frame()) renderOne(true);
+  });
+  const note = s.source_note || '';
   $('#srcNote').textContent = note;
   $('#srcNote').style.display = note ? 'block' : 'none';
 }
-function updateRangeHint(){
-  const sc = SCENES.find(s => s.id === state.scene);
-  const ds = sc ? sc.dates : [];
-  const a = Number($('#pFrom').value), b = Number($('#pTo').value);
-  const n = Math.max(0, b - a + 1);
-  const MAX_FRAMES = 240;   // 与 doRun / 服务端一致
-  $('#btnRun').textContent = n > 1 ? `出 ${Math.min(n, MAX_FRAMES)} 张图 → 视频`
-                                   : '出区间全部图片 → 视频';
-  $('#rangeHint').textContent = n <= 0 ? '区间只覆盖一个时间点'
-    : n > MAX_FRAMES
-      ? `${ym(ds[a])} → ${ym(ds[b])}，共 ${n} 个时间点，超出上限 ${MAX_FRAMES}，将均匀抽稀`
-      : `${ym(ds[a])} → ${ym(ds[b])}，共 ${n} 张`;
-}
-function pullUI(){
-  const sc = SCENES.find(s => s.id === $('#pScene').value);
-  const ds = sc ? sc.dates : [];
-  const a = Number($('#pFrom').value), b = Number($('#pTo').value);
-  state = {
-    scene: $('#pScene').value,
-    date: ds[Number($('#pDate').value)] || state.date,
-    fromIdx: Math.min(a, b), toIdx: Math.max(a, b),
-    from_date: ds[Math.min(a, b)] || ds[0],
-    to_date: ds[Math.max(a, b)] || ds[ds.length - 1],
-    theme: $('#pTheme').value,
-    style: $('#pStyle').value,
-    size: $('#pSize').value,
-  };
-  $('#pDateLbl').textContent = state.date || '—';
-  $('#advice').textContent = $('#advice').dataset.base || '';
+function renderStyles(){
+  $('#styleList').innerHTML = STYLES.map(p => `
+    <button class="styleCard${p.id === st.style ? ' on' : ''}" data-id="${esc(p.id)}">
+      ${p.preview ? `<img src="${esc(p.preview)}" alt="" loading="lazy">`
+                  : `<span class="skel"></span>`}
+      <span><span class="t">${esc(p.label)}</span>
+        <span class="d">${esc(p.desc || '')}</span></span>
+    </button>`).join('');
+  $$('#styleList .styleCard').forEach(b => b.onclick = () => {
+    st.style = b.dataset.id;
+    styleProfile = null;                       // 选了预设就别再叠参考图
+    renderStyles();
+    if (frame()) renderOne(true);
+  });
 }
 
-// ── 渲染 ──
-function showLoading(text, prog){
-  $('#view').innerHTML = `<div class="empty"><div class="spinner"></div>${esc(text)}
-    ${prog!=null?`<div class="bar"><i style="width:${Math.round(prog*100)}%"></i></div>`:''}</div>`;
+/* ══════════════════════════════════════════════════════════════
+   分镜
+   ══════════════════════════════════════════════════════════════ */
+const MAX_DEFAULT_FRAMES = 8;      // 打开时最多先铺这么多帧
+function fillRange(){
+  const s = scene() || {};
+  const ds = s.dates || [];
+  const opts = ds.map((d, i) => `<option value="${i}">${ym(d)}</option>`).join('');
+  $('#pFrom').innerHTML = opts;
+  $('#pTo').innerHTML = opts;
+
+  // 初始区间不要无脑铺满：二战有 146 个时间点，一打开就是 146 行，
+  // 既看不懂也没法用。日期少的题材全铺，多的就在 default_date 附近取一段。
+  let a = 0, b = Math.max(0, ds.length - 1);
+  if (ds.length > MAX_DEFAULT_FRAMES){
+    const di = Math.max(0, ds.indexOf(s.default_date || ds[0]));
+    const half = Math.floor(MAX_DEFAULT_FRAMES / 2);
+    a = Math.max(0, di - half);
+    b = Math.min(ds.length - 1, a + MAX_DEFAULT_FRAMES - 1);
+    a = Math.max(0, b - MAX_DEFAULT_FRAMES + 1);
+  }
+  $('#pFrom').value = a;
+  $('#pTo').value = b;
+  updateRangeHint();
 }
-async function doRender(){
-  pullUI(); busy(true); showLoading('渲染中…');
-  const t0 = performance.now();
-  try{
-    const body = Object.assign({}, state);
-    if (styleProfile && $('#useStyle')?.checked !== false) body.style_profile = styleProfile;
-    const r = await api('/api/render', {method:'POST', body: JSON.stringify(body)});
+function updateRangeHint(){
+  const n = Math.abs(+$('#pTo').value - +$('#pFrom').value) + 1;
+  const total = ((scene() || {}).dates || []).length;
+  $('#rangeHint').textContent = total > n ? `${n} / ${total} 个` : `${n} 个`;
+}
+function rebuildSb(){
+  const ds = (scene() || {}).dates || [];
+  const a = +$('#pFrom').value, b = +$('#pTo').value;
+  const lo = Math.min(a, b), hi = Math.max(a, b);
+  cart = ds.slice(lo, hi + 1).map(d => ({date:d}));
+  resetResult();
+  drawSb(); drawFilm(); updateTransport(); updateTxtPanel();
+  if (cart.length) renderOne(); else showHint();
+}
+function resetResult(){
+  rendered = []; renderedHolds = []; lastJob = null; cur = 0; stopPlay();
+}
+function drawSb(){
+  const box = $('#sbList');
+  if (!cart.length){
+    box.innerHTML = `<div class="emptySb">还没有帧。<br>用上面的区间填一批，或点「加一帧」。</div>`;
+  } else {
+    box.innerHTML = cart.map((f, i) => `
+      <div class="frame${i === cur ? ' on' : ''}" data-i="${i}">
+        <span class="n">${i + 1}</span>
+        ${rendered[i] ? `<img class="thumb" src="${esc(rendered[i])}" loading="lazy" alt="">`
+                      : `<span class="nothumb"></span>`}
+        <span class="body">
+          <span class="yr">${ym(f.date)}</span><span class="hold">${fmtSec(holdOf(f))}s</span>
+          <div class="cap">${esc(f.title || f.subtitle || '（用题材默认文案）')}</div>
+        </span>
+        <span class="ops">
+          <button data-op="up" title="上移">&#9650;</button>
+          <button data-op="down" title="下移">&#9660;</button>
+          <button data-op="edit" title="改本帧停留时长">秒</button>
+          <button data-op="del" title="删除这一帧">&times;</button>
+        </span>
+      </div>`).join('');
+  }
+  $('#sbN').textContent = cart.length;
+  $('#sbSec').textContent = fmtSec(totalSec());
+  $$('#sbList .frame').forEach(el => {
+    const i = +el.dataset.i;
+    el.onclick = e => {
+      const op = e.target.closest('[data-op]');
+      if (op){ e.stopPropagation(); frameOp(i, op.dataset.op); return; }
+      selectFrame(i);
+    };
+  });
+}
+function frameOp(i, op){
+  if (op === 'del'){
+    cart.splice(i, 1);
+    if (rendered.length) rendered.splice(i, 1);
+    if (cur >= cart.length) cur = Math.max(0, cart.length - 1);
+    drawSb(); drawFilm(); updateTransport(); updateTxtPanel();
+    if (cart.length) renderOne(true); else showHint();
+    return;
+  }
+  if (op === 'up' && i > 0){
+    [cart[i - 1], cart[i]] = [cart[i], cart[i - 1]];
+    if (rendered.length) [rendered[i - 1], rendered[i]] = [rendered[i], rendered[i - 1]];
+    if (cur === i) cur = i - 1; else if (cur === i - 1) cur = i;
+  }
+  if (op === 'down' && i < cart.length - 1){
+    [cart[i + 1], cart[i]] = [cart[i], cart[i + 1]];
+    if (rendered.length) [rendered[i + 1], rendered[i]] = [rendered[i], rendered[i + 1]];
+    if (cur === i) cur = i + 1; else if (cur === i + 1) cur = i;
+  }
+  if (op === 'edit'){
+    const v = prompt(`第 ${i + 1} 帧（${ym(cart[i].date)}）停留几秒？`, holdOf(cart[i]));
+    if (v === null) return;
+    const n = Number(v);
+    if (!(n > 0)){ toast('要一个大于 0 的秒数'); return; }
+    cart[i].hold = Math.min(30, n);
+  }
+  drawSb(); drawFilm(); updateTransport();
+}
+function selectFrame(i){
+  if (i < 0 || i >= cart.length) return;
+  cur = i; drawSb(); drawFilm(); updateTransport(); updateTxtPanel();
+  const url = rendered[i];
+  if (url) $('#canvas').innerHTML =
+    `<img class="plate" src="${esc(url)}" alt="第 ${i + 1} 帧">`;
+  else renderOne(true);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   文案
+   ══════════════════════════════════════════════════════════════ */
+function updateTxtPanel(){
+  const f = frame();
+  $('#txtWhich').textContent = f ? `第 ${cur + 1} 帧 · ${ym(f.date)}` : '未选中';
+  $('#tTitle').value = f && f.title != null ? f.title : '';
+  $('#tSub').value   = f && f.subtitle != null ? f.subtitle : '';
+  $('#tFoot').value  = f && f.footer != null ? f.footer : '';
+}
+function readTxtPanel(){
+  const f = frame(); if (!f) return;
+  const put = (k, v) => { if (v === '') delete f[k]; else f[k] = v; };
+  put('title', $('#tTitle').value);
+  put('subtitle', $('#tSub').value);
+  put('footer', $('#tFoot').value);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   画布 / 走带 / 胶片条
+   ══════════════════════════════════════════════════════════════ */
+function showHint(){
+  $('#canvas').innerHTML = cart.length
+    ? `<div class="hintbox"><b>还没出图</b>
+         点右边的 <span class="k">出这一张</span> 看当前帧，
+         或 <span class="k">出全部图</span> 把整条分镜渲染出来。</div>`
+    : `<div class="hintbox"><b>分镜还是空的</b>
+         左边选一个年份区间，点 <span class="k">用这个区间重建分镜</span>。</div>`;
+}
+function drawFilm(){
+  const el = $('#film');
+  if (!rendered.length){ el.style.display = 'none'; el.innerHTML = ''; updateTransport(); return; }
+  el.style.display = 'flex';
+  el.innerHTML = rendered.map((u, i) =>
+    `<img src="${esc(u)}" data-i="${i}" class="${i === cur ? 'on' : ''}" alt="第 ${i + 1} 帧">`).join('');
+  $$('#film img').forEach(im => im.onclick = () => selectFrame(+im.dataset.i));
+  // 播放键的可用性取决于「有没有渲染结果」，所以每次渲染结果变化都要重算走带。
+  // 漏掉这一步的表现是：5 帧都出好了，播放键还是灰的（踩过）。
+  updateTransport();
+}
+function updateTransport(){
+  const n = cart.length;
+  $('#tpIdx').textContent = `${n ? cur + 1 : 0} / ${n}`;
+  if (!playing){
+    let before = 0;
+    for (let i = 0; i < Math.min(cur, n); i++) before += holdOf(cart[i]);
+    $('#tpTime').textContent = `${fmtSec(before)} / ${fmtSec(totalSec())} s`;
+    $('#tpBar').style.width = totalSec() ? (before / totalSec() * 100) + '%' : '0%';
+  }
+  ['#tpFirst','#tpPrev','#tpNext','#tpLast'].forEach(s => $(s).disabled = !n);
+  // 播放键还要看有没有渲染结果 —— 预演放的是真实图片，没出图就没得放
+  $('#tpPlay').disabled = !n || !rendered.length;
+}
+function stopPlay(){
+  playing = false; clearTimeout(playTimer);
+  $('#tpPlay').innerHTML = '&#9654;'; $('#tpPlay').classList.remove('rec');
+  updateTransport();
+}
+function play(){
+  if (!rendered.length){ toast('先点「出全部图」，预演用的是真实渲染结果'); return; }
+  if (cart.length < 2){ toast('至少两帧才谈得上预演'); return; }
+  const span = Math.min(cart.length, rendered.length);
+  playing = true; playAcc = 0;
+  $('#tpPlay').innerHTML = '&#10074;&#10074;'; $('#tpPlay').classList.add('rec');
+  // 停在末帧时再按播放 = 从头放一遍，跟播放器的习惯一致
+  let i = cur >= span - 1 ? 0 : Math.max(0, cur);
+  const tick = () => {
+    if (!playing) return;
+    selectFrameSilent(i);
+    const h = (renderedHolds[i] != null ? renderedHolds[i] : holdOf(cart[i])) * 1000;
+    playAcc += h;
+    $('#tpTime').textContent = `${fmtSec(playAcc / 1000)} / ${fmtSec(totalSec())} s`;
+    $('#tpBar').style.width = totalSec()
+      ? Math.min(100, playAcc / 1000 / totalSec() * 100) + '%' : '0%';
+    i++;
+    if (i >= span){ stopPlay(); return; }
+    playTimer = setTimeout(tick, h);
+  };
+  tick();
+}
+// 预演时只换画面和高亮，不触发重新渲染
+function selectFrameSilent(i){
+  cur = i;
+  const img = $('#canvas img.plate');
+  if (img && rendered[i]) img.src = rendered[i];
+  $$('#film img').forEach((e, k) => e.classList.toggle('on', k === i));
+  $$('#sbList .frame').forEach((e, k) => e.classList.toggle('on', k === i));
+  $('#tpIdx').textContent = `${i + 1} / ${cart.length}`;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   出图
+   ══════════════════════════════════════════════════════════════ */
+async function renderOne(silent){
+  const f = frame();
+  if (!f){ showHint(); return; }
+  const body = {
+    scene:st.scene, date:f.date, theme:st.theme, size:st.size, style:st.style,
+    title:    'title'    in f ? f.title    : null,
+    subtitle: 'subtitle' in f ? f.subtitle : null,
+    footer:   'footer'   in f ? f.footer   : null,
+  };
+  if (styleProfile) body.style_profile = styleProfile;
+  if (!silent) busy(true);
+  $('#canvas').innerHTML = `<div class="hintbox"><div class="spin"></div>渲染中…</div>`;
+  try {
+    const r = await api('/api/render', {method:'POST', body:JSON.stringify(body)});
     const j = await r.json();
     if (!r.ok) throw new Error(errText(j.detail, '渲染失败'));
-    lastImage = j;
-    $('#view').innerHTML =
-      `<img src="${j.image}?t=${Date.now()}" alt="结果"
-            onerror="this.style.display='none';document.getElementById('imgErr').style.display='block'">
-       <div id="imgErr" style="display:none;color:#a33;font-size:14px;text-align:center">
-         图片加载失败：${esc(j.image)}<br>
-         <span style="font-size:12px;color:var(--ink2)">服务端产出了文件但取不到 —— 检查服务是否还在跑</span>
-       </div>`;
-    $('#meta').textContent = `${j.width}×${j.height} · 渲染 ${j.elapsed}s`;
-    addMsg('assistant', `好了（${j.elapsed}s）。`, `${state.scene} · ${state.date} · ${state.theme} · ${state.style}`);
-  }catch(e){ toast(e.message); showLoading('出错了：' + e.message); }
-  finally{ busy(false); }
+    $('#canvas').innerHTML = `<img class="plate" src="${esc(j.image)}?t=${Date.now()}"
+      alt="第 ${cur + 1} 帧" onerror="this.replaceWith(Object.assign(document.createElement('div'),
+      {className:'hintbox',innerHTML:'<b>图片取不到</b>服务端产出了文件但下载失败，检查服务是否还在跑'}))">`;
+    if (!silent) toast(`渲染完成 ${j.elapsed}s`);
+  } catch(e){
+    $('#canvas').innerHTML = `<div class="hintbox"><b>出错了</b>${esc(e.message)}</div>`;
+  } finally { if (!silent) busy(false); }
 }
 
-// ── 区间：先出全部图片，最后合成视频 ──
-let galleryTimer = null;
+/* ══════════════════════════════════════════════════════════════
+   任务
+   ══════════════════════════════════════════════════════════════ */
+async function submit(mode){
+  if (!cart.length){ toast('分镜是空的，先填一批年份'); return; }
+  readTxtPanel();
+  const body = {
+    scene:st.scene, theme:st.theme, size:st.size, style:st.style,
+    hold:Number(st.hold), fps:24, max_frames:240, mode:mode,
+    frames:cart.map(f => ({
+      date:f.date,
+      hold: f.hold != null ? Number(f.hold) : null,
+      title:    'title'    in f ? f.title    : null,
+      subtitle: 'subtitle' in f ? f.subtitle : null,
+      footer:   'footer'   in f ? f.footer   : null,
+    })),
+  };
+  if (styleProfile) body.style_profile = styleProfile;
 
-function showGallery(frames, total, msg, prog){
-  if (galleryTimer) clearTimeout(galleryTimer);
-  const have = frames.length;
-  const cells = frames.map((u, i) =>
-    `<figure class="cell"><img src="${u}?t=${Date.now()}" loading="lazy"
-       onerror="this.parentNode.classList.add('bad')">
-     <figcaption>${i+1}</figcaption></figure>`).join('');
-  const blanks = Math.max(0, total - have);
-  const ph = Array.from({length: blanks}, () =>
-    `<figure class="cell ph"><div class="spin"></div></figure>`).join('');
-  $('#view').innerHTML =
-    `<div class="galleryWrap">
-       <div class="gline">${esc(msg||'')}
-         ${prog!=null?`<span class="pct">${Math.round(prog*100)}%</span>`:''}</div>
-       <div class="bar"><i style="width:${Math.round((prog||0)*100)}%"></i></div>
-       <div class="gallery">${cells}${ph}</div>
-     </div>`;
-}
-
-async function doRun(){
-  pullUI();
-  const n = state.to_idx - state.from_idx + 1;
-  if (n <= 0){ toast('区间不合法：结束年份要晚于开始年份'); return; }
-  busy(true);
-  // 上限跟服务端 VideoReq.max_frames 保持一致；不要各自写一个数，
-  // 不然按钮上说 146 张、实际只出 60 张（踩过）。
-  const MAX_FRAMES = 240;
-  const want = Math.min(n, MAX_FRAMES);
-  showGallery([], want, '提交任务…', 0);
-  try{
-    const r = await api('/api/video', {method:'POST', body: JSON.stringify({
-      scene: state.scene, date_from: state.from_date, date_to: state.to_date,
-      theme: state.theme, size: state.size, style: state.style,
-      style_profile: styleProfile || undefined,
-      fps: 24, hold: 0.45, max_frames: MAX_FRAMES})});
+  busy(true); stopPlay();
+  try {
+    const r = await api('/api/video', {method:'POST', body:JSON.stringify(body)});
     const j = await r.json();
     if (!r.ok) throw new Error(errText(j.detail, '提交失败'));
-    const jid = j.job;
-    // 服务端实际会出 j.n_dates 帧，用它而不是本地算的 n
-    let msg = `开始出 ${j.n_dates} 张图（${ym(state.from_date).trim()} → ${ym(state.to_date).trim()}），出完自动合成视频。`;
-    if (j.note) msg += `　⚠ ${j.note}`;
-    if (j.note) toast(j.note);
-    addMsg('assistant', msg, `任务 ${jid}`);
-    let last = 0;
-    while(true){
-      await new Promise(s => setTimeout(s, 900));
-      const st = await (await fetch('/api/jobs/' + jid)).json();
-      if (st.status === 'failed') throw new Error(errText(st.error, '渲染失败'));
-      const fr = st.frames || [];
-      if (fr.length !== last || st.status === 'done'){
-        last = fr.length;
-        showGallery(fr, st.total || j.n_dates, st.message, st.progress);
-      }
-      if (st.status === 'done'){
-        const v = st.result;
-        $('#view').innerHTML =
-          `<div class="galleryWrap">
-             <div class="gline"><b>${v.n_frames} 张图全部出完，视频已合成</b>
-               <span class="pct">${v.seconds}s · ${v.size}</span></div>
-             <video src="${v.video}?t=${Date.now()}" controls autoplay loop
-                    onerror="this.insertAdjacentHTML('afterend','<div style=color:#a33>视频加载失败</div>')"></video>
-             <div class="gallery">${v.frames.map((u,i)=>
-               `<figure class="cell"><img src="${u}" loading="lazy"><figcaption>${i+1}</figcaption></figure>`).join('')}</div>
-           </div>`;
-        $('#meta').textContent = `${v.n_frames} 张 · ${v.seconds}s · ${v.verify||''}`;
-        addMsg('assistant', `完成：${v.n_frames} 张图 + ${v.seconds} 秒视频。`);
-        break;
-      }
+    lastJob = {jid:j.job};
+    rendered = []; renderedHolds = []; drawSb(); drawFilm();
+    toast(`${mode === 'frames' ? '出图' : '出片'}任务已提交：${j.n_dates} 帧，约 ${j.est_seconds}s`);
+    await poll(j.job, mode);
+  } catch(e){
+    toast(e.message);
+    $('#canvas').innerHTML = `<div class="hintbox"><b>任务失败</b>${esc(e.message)}</div>`;
+  } finally { busy(false); }
+}
+
+async function poll(jid, mode){
+  let lastN = -1;
+  for (;;){
+    await new Promise(s => setTimeout(s, 900));
+    let job;
+    try { job = await (await fetch('/api/jobs/' + jid)).json(); }
+    catch(e){ throw new Error('轮询任务状态失败'); }
+    if (!job || job.status === 'failed') throw new Error(errText(job && job.error, '任务失败'));
+    const fr = job.frames || [];
+    if (fr.length !== lastN){
+      lastN = fr.length;
+      rendered = fr.slice();
+      renderedHolds = (job.holds || []).slice();
+      drawSb(); drawFilm();
+      const shown = rendered[Math.min(cur, Math.max(0, rendered.length - 1))];
+      $('#canvas').innerHTML =
+        `<div class="stage">
+           <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
+             ${shown ? `<img class="plate" src="${esc(shown)}?t=${Date.now()}" alt="">`
+                     : `<div class="hintbox"><div class="spin"></div>准备中…</div>`}
+           </div>
+           <div class="tiny muted" style="padding:8px 2px 0">${esc(job.message || '')}
+             ${job.progress != null
+               ? `<span class="mono">${Math.round(job.progress * 100)}%</span>` : ''}</div>
+         </div>`;
     }
-  }catch(e){ toast(e.message); $('#view').innerHTML = `<div class="empty">出错了：${esc(e.message)}</div>`; }
-  finally{ busy(false); }
+    if (job.status === 'done'){
+      const res = job.result || {};
+      lastJob = {jid, res};
+      rendered = res.frames || rendered;
+      renderedHolds = res.holds || renderedHolds;
+      drawSb(); drawFilm();
+      if (res.video){
+        $('#canvas').innerHTML =
+          `<div class="stage">
+             <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
+               <video src="${esc(res.video)}?t=${Date.now()}" controls autoplay loop playsinline></video>
+             </div>
+             <div class="tiny muted" style="padding:8px 2px 0">
+               ${res.n_frames} 帧 · ${res.seconds}s · ${esc(res.size)} · ${esc(res.verify || '')}
+             </div>
+           </div>`;
+      } else if (rendered.length){
+        $('#canvas').innerHTML =
+          `<img class="plate" src="${esc(rendered[Math.min(cur, rendered.length - 1)])}" alt="">`;
+      }
+      toast(mode === 'frames'
+        ? `全部 ${res.n_frames} 帧出好了，按走带上的播放键可以预演`
+        : `完成：${res.n_frames} 帧 / ${res.seconds}s`);
+      refreshJobCount();
+      return;
+    }
+  }
 }
 
-// ── 对话 ──
-let history = [];
-async function doChat(){
-  const txt = $('#chatIn').value.trim();
-  if (!txt) return;
-  pullUI();
-  addMsg('user', txt); $('#chatIn').value = '';
-  history.push({role:'user', content: txt});
-  const wait = addMsg('assistant', '…');
-  busy(true);
-  try{
-    const r = await api('/api/chat', {method:'POST', body: JSON.stringify({
-      messages: history, state})});
-    const j = await r.json();
-    if (!r.ok) throw new Error(errText(j.detail, '对话失败'));
-    wait.remove();
-    addMsg('assistant', j.reply || '(无回复)');
-    history.push({role:'assistant', content: j.reply || ''});
-    if (j.state) { state = Object.assign(state, j.state); syncUI(); }
-    if (j.action === 'video') await doRun();
-    else if (j.action === 'render') await doRender();
-  }catch(e){
-    wait.remove(); toast(e.message);
-    addMsg('assistant', '这边出了点问题：' + e.message,
-           e.message.includes('Key') ? '点右上角「设置」填一个' : '');
-  }finally{ busy(false); }
+/* ══════════════════════════════════════════════════════════════
+   作品库
+   ══════════════════════════════════════════════════════════════ */
+async function refreshJobCount(){
+  try {
+    const r = await (await fetch('/api/jobs')).json();
+    const n = (r.jobs || []).length;
+    $('#jobCount').textContent = n ? `(${n})` : '';
+  } catch(e){}
+}
+async function loadJobs(){
+  const box = $('#jobList');
+  box.innerHTML = `<div class="tiny muted">读取中…</div>`;
+  let js = [];
+  try { js = ((await (await fetch('/api/jobs')).json()).jobs) || []; }
+  catch(e){ box.innerHTML = `<div class="tiny muted">读不到任务列表</div>`; return; }
+  if (!js.length){
+    box.innerHTML = `<div class="tiny muted">还没有作品。出一单就会出现在这里。</div>`;
+    return;
+  }
+  box.innerHTML = js.map(j => {
+    const p = j.params || {}, res = j.result || {};
+    const sc = SCENES.find(s => s.id === p.scene);
+    const frames = res.frames || j.frames || [];
+    const nf = res.n_frames || frames.length || 0;
+    const when = new Date((j.created || 0) * 1000);
+    const hhmm = `${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}`;
+    const label = {done:'完成', failed:'失败', running:'进行中', queued:'排队'}[j.status] || j.status;
+    return `<div class="job" data-id="${esc(j.id)}">
+      ${frames[0] ? `<img src="${esc(frames[0])}" loading="lazy" alt="">` : `<span class="ph">无图</span>`}
+      <div>
+        <div class="jt">${esc(sc ? sc.title : p.scene)} · ${nf} 帧
+          <span class="badge ${esc(j.status)}">${esc(label)}</span></div>
+        <div class="jm">${hhmm} · ${esc(p.theme || '')} · ${esc(p.size || '')} · ${esc(p.style || '')}${
+          res.seconds ? ' · ' + res.seconds + 's' : ''}</div>
+        <div class="ja">
+          <button class="btn sm" data-a="restore">参数回填</button>
+          ${res.video ? `<a class="btn sm" href="/api/jobs/${esc(j.id)}/video.mp4">视频</a>` : ''}
+          <a class="btn sm" href="/api/jobs/${esc(j.id)}/frames.zip">帧 ZIP</a>
+          <button class="btn sm" data-a="del">删除</button>
+        </div>
+        ${j.error ? `<div class="tiny" style="color:var(--cinnabar);margin-top:4px">${esc(j.error)}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  $$('#jobList .job').forEach(el => {
+    const job = js.find(x => x.id === el.dataset.id);
+    el.querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
+      if (b.dataset.a === 'del'){
+        if (!confirm('删掉这一单？磁盘上的帧和视频也一起清掉。')) return;
+        await fetch('/api/jobs/' + job.id, {method:'DELETE'});
+        toast('已删除'); loadJobs(); refreshJobCount();
+        return;
+      }
+      restore(job);
+    });
+  });
+}
+function restore(job){
+  const p = job.params || {};
+  if (p.scene && SCENES.some(s => s.id === p.scene)){ st.scene = p.scene; renderScenes(); }
+  if (p.theme) st.theme = p.theme;
+  if (p.size) st.size = p.size;
+  if (p.style) st.style = p.style;
+  if (p.hold){ st.hold = Number(p.hold); $('#pHold').value = st.hold;
+               $('#pHoldLbl').textContent = fmtSec(st.hold) + 's'; }
+  if (Array.isArray(p.frames) && p.frames.length){
+    cart = p.frames.map(f => Object.assign({}, f));
+  } else if (p.date_from && p.date_to){
+    const ds = (scene() || {}).dates || [];
+    const i0 = ds.indexOf(p.date_from), i1 = ds.indexOf(p.date_to);
+    if (i0 >= 0 && i1 >= 0){
+      const lo = Math.min(i0, i1), hi = Math.max(i0, i1);
+      cart = ds.slice(lo, hi + 1).map(d => ({date:d}));
+    }
+  }
+  resetResult();
+  syncParams(); drawSb(); drawFilm(); updateTransport(); updateTxtPanel(); showHint();
+  $('#drawer').classList.remove('on');
+  toast('参数已回填到分镜，点「出全部图」复现');
 }
 
-// ── 风格参考图 ──
+/* ══════════════════════════════════════════════════════════════
+   设置
+   ══════════════════════════════════════════════════════════════ */
+function loadCfg(){
+  $('#sBase').value = cfg.base || '';
+  $('#sKey').value  = cfg.key || '';
+  $('#sChat').value = cfg.chat || '';
+  $('#sImage').value = cfg.image || '';
+  const known = ['https://api.siliconflow.cn/v1','https://api-inference.modelscope.cn/v1'];
+  $('#sPreset').value = known.includes(cfg.base) ? cfg.base : (cfg.base ? '__custom__' : known[0]);
+  const has = !!cfg.key;
+  $('#keyDot').classList.toggle('on', has);
+  $('#keyText').textContent = has ? ' 已填 Key' : ' 未填 Key';
+}
+$('#sPreset').onchange = () => {
+  if ($('#sPreset').value !== '__custom__') $('#sBase').value = $('#sPreset').value;
+};
+$('#sSave').onclick = () => {
+  const next = {base:$('#sBase').value.trim(), key:$('#sKey').value.trim(),
+                chat:$('#sChat').value.trim(), image:$('#sImage').value.trim()};
+  localStorage.setItem('histmap.cfg', JSON.stringify(next));
+  Object.assign(cfg, next);
+  $('#mask').classList.remove('on'); loadCfg(); toast('已保存到本机浏览器');
+};
+$('#sClear').onclick = () => {
+  localStorage.removeItem('histmap.cfg');
+  ['base','key','chat','image'].forEach(k => delete cfg[k]);
+  loadCfg(); toast('已清空');
+};
+$('#btnSettings').onclick = () => $('#mask').classList.add('on');
+$('#mask').onclick = e => { if (e.target.id === 'mask') $('#mask').classList.remove('on'); };
+
+/* ══════════════════════════════════════════════════════════════
+   风格参考图
+   ══════════════════════════════════════════════════════════════ */
 const drop = $('#drop');
 drop.onclick = () => $('#file').click();
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
@@ -555,63 +1020,116 @@ $('#file').onchange = e => { if (e.target.files[0]) uploadStyle(e.target.files[0
 
 async function uploadStyle(f){
   const fd = new FormData(); fd.append('file', f);
-  drop.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px"></div>提取中…';
-  try{
-    const r = await api('/api/style/extract', {method:'POST', body: fd, headers:{}});
+  drop.innerHTML = `<div class="spin" style="width:16px;height:16px;border-width:2px"></div>提取中…`;
+  try {
+    const r = await api('/api/style/extract', {method:'POST', body:fd});
     const j = await r.json();
     if (!r.ok) throw new Error(errText(j.detail, '提取失败'));
     styleProfile = j.profile;
-    const pal = (j.profile.palette||[]).map(p =>
-      `<i style="background:${p.hex}" title="${p.hex}"></i>`).join('');
-    drop.innerHTML = `<img src="${j.preview}?t=${Date.now()}">
-      <div style="font-size:12px">已提取风格 · 点击可换一张</div>`;
-    $('#pal').innerHTML = pal;
-    $('#advice').dataset.base = j.profile._advice || '';
-    $('#advice').textContent = j.profile._advice || '';
+    st.style = 'none';
+    renderStyles();
+    $('#pal').innerHTML = (j.profile.palette || []).map(p =>
+      `<i style="background:${esc(p.hex)}" title="${esc(p.hex)}"></i>`).join('');
+    drop.innerHTML = `<img src="${esc(j.preview)}?t=${Date.now()}" alt="参考图">
+      <span class="tiny">已提取，出图时会套上它的色调与颗粒</span>`;
     toast('风格已提取');
-    await doRender();
-  }catch(e){
-    drop.innerHTML = '提取失败：' + esc(e.message) + '<br><span style="font-size:11.5px">点这里重试</span>';
-    toast(e.message);
+    if (frame()) renderOne(true);
+  } catch(e){
+    drop.innerHTML = `提取失败：${esc(e.message)}<br><span class="tiny">再试一次，或换张图</span>`;
   }
 }
 
-// ── 启动 ──
-(async function boot(){
-  loadCfg();
-  const s = await (await fetch('/api/scenes')).json();
-  SCENES = s.scenes;
-  const st = await (await fetch('/api/styles')).json();
-  STYLES = st.presets;
-  $('#pStyle').innerHTML = STYLES.map(x => `<option value="${x.id}">${x.label}</option>`).join('');
-  $('#pScene').innerHTML = SCENES.map(x => `<option value="${x.id}">${x.title}</option>`).join('');
-  const first = SCENES.find(x => x.id === 'tang') || SCENES[0];
-  state = {scene: first.id, date: first.default_date, theme: first.themes[0],
-           style: 'none', size: first.default_size || '16x9'};
-  syncUI();
-
-  addMsg('assistant', '说一句你想要的历史地图。比如：\n' +
-    '· 唐宪宗二年的军阀格局图，宣纸风格\n· 1941 年欧洲谁控制谁，横屏\n· 改成竖屏再加个视频',
-    '出图不需要 Key；对话改参数需要一个 LLM Key');
-})();
-
-$('#btnRender').onclick = doRender;
-$('#btnRun').onclick = doRun;
-$('#btnSend').onclick = doChat;
-$('#chatIn').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) doChat(); };
-$('#pScene').onchange = () => {
-  const sc = SCENES.find(s => s.id === $('#pScene').value);
-  state = {scene: sc.id, date: sc.default_date, theme: sc.themes[0],
-           style: state.style || 'none', size: sc.default_size || '16x9',
-           fromIdx: 0, toIdx: sc.dates.length - 1,
-           from_date: sc.dates[0], to_date: sc.dates[sc.dates.length - 1]};
-  syncUI();
+/* ══════════════════════════════════════════════════════════════
+   事件
+   ══════════════════════════════════════════════════════════════ */
+$('#pFrom').onchange = updateRangeHint;
+$('#pTo').onchange = updateRangeHint;
+$('#btnFill').onclick = rebuildSb;
+$('#btnClearSb').onclick = () => {
+  cart = []; resetResult();
+  drawSb(); drawFilm(); updateTransport(); updateTxtPanel(); showHint();
 };
-$('#pDate').oninput = () => { const sc = SCENES.find(s=>s.id===state.scene);
-  state.date = sc.dates[Number($('#pDate').value)]; $('#pDateLbl').textContent = state.date; };
-$('#pTheme').onchange = () => { state.theme = $('#pTheme').value; };
-$('#pStyle').onchange = () => { state.style = $('#pStyle').value; };
-$('#pSize').onchange = () => { state.size = $('#pSize').value; };
+$('#btnAddFrame').onclick = () => {
+  const ds = (scene() || {}).dates || [];
+  if (!ds.length){ toast('这个题材没有可渲染的日期'); return; }
+  const ref = frame() ? frame().date : ds[0];
+  const v = prompt(`加一帧。这个题材可用的时间点：\n${ds.map(ym).join('  ')}\n\n填要加哪一年：`, ym(ref));
+  if (v === null) return;
+  const hit = ds.find(d => ym(d) === String(v).trim());
+  if (!hit){ toast(`「${v}」不在这个题材可渲染的日期里`); return; }
+  cart.splice(cur + 1, 0, {date:hit});
+  if (rendered.length) rendered.splice(cur + 1, 0, null);
+  cur = cur + 1;
+  drawSb(); drawFilm(); updateTransport(); updateTxtPanel(); renderOne();
+};
+$('#pHold').oninput = () => {
+  st.hold = Number($('#pHold').value);
+  $('#pHoldLbl').textContent = fmtSec(st.hold) + 's';
+  drawSb(); updateTransport();
+};
+$('#btnApplyAll').onclick = () => {
+  if (!cart.length){ toast('分镜是空的'); return; }
+  readTxtPanel();
+  const f = frame() || {};
+  const t = f.title, s = f.subtitle, o = f.footer;
+  cart.forEach(x => {
+    delete x.title; delete x.subtitle; delete x.footer;
+    if (t !== undefined) x.title = t;
+    if (s !== undefined) x.subtitle = s;
+    if (o !== undefined) x.footer = o;
+  });
+  drawSb(); toast('已把这个文案套到全部帧');
+};
+$('#btnClearTxt').onclick = () => {
+  const f = frame(); if (!f) return;
+  delete f.title; delete f.subtitle; delete f.footer;
+  updateTxtPanel(); drawSb(); renderOne(true); toast('本帧文案覆盖已清空');
+};
+['#tTitle','#tSub','#tFoot'].forEach(s => {
+  $(s).onchange = () => { readTxtPanel(); drawSb(); renderOne(true); };
+});
+
+$('#btnRender').onclick = () => renderOne();
+$('#btnFrames').onclick = () => submit('frames');
+$('#btnVideo').onclick  = () => submit('video');
+$('#btnZip').onclick = () => {
+  if (!lastJob){ toast('先出一次图，再下载'); return; }
+  location.href = `/api/jobs/${lastJob.jid}/frames.zip`;
+};
+$('#btnMp4').onclick = () => {
+  if (!lastJob || !(lastJob.res || {}).video){ toast('还没有视频，先点「合成视频」'); return; }
+  location.href = `/api/jobs/${lastJob.jid}/video.mp4`;
+};
+$('#btnCopy').onclick = async () => {
+  readTxtPanel();
+  const payload = {scene:st.scene, theme:st.theme, size:st.size, style:st.style,
+                   hold:Number(st.hold), frames:cart};
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+    toast('参数 JSON 已复制');
+  } catch(e){ toast('复制失败，浏览器没给剪贴板权限'); }
+};
+
+$('#tpFirst').onclick = () => selectFrame(0);
+$('#tpPrev').onclick  = () => selectFrame(Math.max(0, cur - 1));
+$('#tpNext').onclick  = () => selectFrame(Math.min(cart.length - 1, cur + 1));
+$('#tpLast').onclick  = () => selectFrame(cart.length - 1);
+$('#tpPlay').onclick  = () => { playing ? stopPlay() : play(); };
+
+$('#btnJobs').onclick = () => { $('#drawer').classList.add('on'); loadJobs(); };
+$('#btnCloseJobs').onclick = () => $('#drawer').classList.remove('on');
+$('#btnRefreshJobs').onclick = () => { loadJobs(); refreshJobCount(); };
+
+document.addEventListener('keydown', e => {
+  // 焦点在表单控件或按钮上时不要抢键：空格会既激活按钮又触发预演
+  if (e.target.matches('input,textarea,select,button,a')) return;
+  if (e.key === 'ArrowLeft')  $('#tpPrev').click();
+  if (e.key === 'ArrowRight') $('#tpNext').click();
+  if (e.key === ' '){ e.preventDefault(); $('#tpPlay').click(); }
+  if (e.key === 'Escape'){ $('#drawer').classList.remove('on'); $('#mask').classList.remove('on'); }
+});
+
+boot();
 </script>
 </body>
 </html>

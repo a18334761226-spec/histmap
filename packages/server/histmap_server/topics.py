@@ -240,9 +240,10 @@ def _boundary_geometry(topic: Topic, year: int):
     return fr
 
 
-def _render_boundary(topic: Topic, date: str, theme: str, size: str) -> Image.Image:
+def _render_boundary(topic: Topic, date: str, theme: str, size: str,
+                     title: str | None = None, subtitle: str | None = None,
+                     footer: str | None = None) -> Image.Image:
     from histmap_core import Renderer, Layout, ControlTimeline, Style
-    from histmap_core.render import _hex_to_rgb
     ctrl = topic.control_path()
     if not ctrl:
         raise FileNotFoundError(f"题材 {topic.id} 缺少控制表")
@@ -252,8 +253,11 @@ def _render_boundary(topic: Topic, date: str, theme: str, size: str) -> Image.Im
     tl.layer_at(date).apply(fr)
 
     beats = tl.events_between(d.replace(day=1).isoformat(), date) if d.day > 1 else []
-    fr.title = f"{d.year} 年 {d.month} 月" + ("" if d.day == 1 else f" {d.day} 日")
-    fr.subtitle = f"{beats[-1]['date'][5:]} · {beats[-1]['label']}" if beats else ""
+    fr.title = title or (f"{d.year} 年 {d.month} 月" + ("" if d.day == 1 else f" {d.day} 日"))
+    if subtitle is not None:
+        fr.subtitle = subtitle
+    else:
+        fr.subtitle = f"{beats[-1]['date'][5:]} · {beats[-1]['label']}" if beats else ""
 
     style = _topic_style(topic, theme)
     W, H, mode = _sizes(size)
@@ -263,7 +267,7 @@ def _render_boundary(topic: Topic, date: str, theme: str, size: str) -> Image.Im
     legend = _topic_legend(topic, theme)
     img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
                          legend_title="实际控制")
-    _draw_overlays(img, r, tl, d, style, W, H, topic)
+    _draw_overlays(img, r, tl, d, style, W, H, topic, footer=footer)
     return img
 
 
@@ -306,8 +310,9 @@ def _topic_legend(topic: Topic, theme: str):
     return None
 
 
-def _draw_overlays(img, renderer, tl, d, style, W, H, topic: Topic):
-    """右下角大事记 + 底部口径声明。题材没提供就跳过。"""
+def _draw_overlays(img, renderer, tl, d, style, W, H, topic: Topic,
+                   footer: str | None = None):
+    """右下角大事记 + 底部口径声明。题材没提供就跳过。footer 可按帧覆盖。"""
     import make_ww2_video as M
     rows = []
     evs = getattr(tl, "events", []) or []
@@ -449,7 +454,9 @@ def rings_of(geom: dict) -> list:
     return out
 
 
-def _render_dynasty(topic: Topic, date: str, theme: str, size: str) -> Image.Image:
+def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
+                    title: str | None = None, subtitle: str | None = None,
+                    footer: str | None = None) -> Image.Image:
     from histmap_core import Renderer, Layout, Region, Frame, Style
     year = int(str(date).split("-")[0])          # 别用 [:4]，807 是三位数
     gj = _dynasty_geometry(topic, year)
@@ -469,7 +476,8 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str) -> Image.Ima
     era = _topic_json(topic).get("_era") or {}
     sub = f"{era.get(str(year))} · {topic.subtitle}" if era.get(str(year)) else topic.subtitle
     fr = Frame(year=year, regions=regions,
-               title=f"{topic.title} · {year} 年", subtitle=sub)
+               title=title or f"{topic.title} · {year} 年",
+               subtitle=sub if subtitle is None else subtitle)
 
     # 图例：标题写着「颜色为所属政权」却不给图例，观众没法对照。
     # 按面上首次出现的顺序列政权（顺序即控制表里写的顺序），不硬编码任何政权名。
@@ -496,8 +504,9 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str) -> Image.Ima
     r = Renderer(style, lay, projection="mercator", supersample=2)
     img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
                          legend_title="所属政权")
-    # 口径声明：控制表里的 _footer 比几何里那句更完整，优先用它
-    note = _topic_json(topic).get("_footer") or gj.get("_meta", {}).get("method") or topic.source_note
+    note = footer if footer is not None else (
+        _topic_json(topic).get("_footer")
+        or gj.get("_meta", {}).get("method") or topic.source_note)
     if note:
         import make_ww2_video as M
         M.draw_footer(img, note, r, style)
@@ -505,12 +514,21 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str) -> Image.Ima
 
 
 # ════════════════════════════════════════════════════════════
-def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9"):
+def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
+           title: str | None = None, subtitle: str | None = None,
+           footer: str | None = None):
+    """出一张图。
+
+    title / subtitle / footer 传 None 就用题材自己的默认文案（事件副标题、
+    题材口径声明），传空字符串则是「明确要求留白」—— 两者不能混为一谈，
+    否则用户想清掉一行标题都做不到。
+    """
     t = get(topic_id)
     if not t:
         raise KeyError(f"没有这个题材: {topic_id}")
     if theme not in t.themes:
         theme = t.themes[0]
+    kw = {"title": title, "subtitle": subtitle, "footer": footer}
     if t.kind == "dynasty":
-        return _render_dynasty(t, date, theme, size)
-    return _render_boundary(t, date, theme, size)
+        return _render_dynasty(t, date, theme, size, **kw)
+    return _render_boundary(t, date, theme, size, **kw)

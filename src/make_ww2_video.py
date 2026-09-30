@@ -532,6 +532,30 @@ def verify_mp4(ff: str, path: str):
     return True, f"可完整解码，{mb:.1f} MB"
 
 
+def probe_duration(ff: str, path: str):
+    """读出 MP4 的真实时长（秒）。读不到就返回 None。
+
+    没有 ffprobe：imageio-ffmpeg 只发一个 ffmpeg 单文件，
+    所以用 `ffmpeg -i` 打到 stderr 的那行 Duration 来解析。
+    有了它才谈得上验证「片子时长 = 各帧停留之和」——
+    这个等式在 concat 的 duration 语义下**很容易不成立**（踩过：末帧被算两遍）。
+    """
+    import re as _re
+    import subprocess as sp
+    if not os.path.exists(path):
+        return None
+    try:
+        p = sp.run([ff, "-i", path], capture_output=True, text=True,
+                   errors="replace", timeout=120)
+    except Exception:
+        return None
+    m = _re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", p.stderr or "")
+    if not m:
+        return None
+    h, mi, s = m.groups()
+    return int(h) * 3600 + int(mi) * 60 + float(s)
+
+
 if __name__ == "__main__":
     sel = sys.argv[1:] or ["16x9", "9x16"]
     ALL = {

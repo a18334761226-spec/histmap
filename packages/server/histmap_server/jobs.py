@@ -56,8 +56,14 @@ def get(jid: str):
 
 
 def list_jobs():
+    """最近的在最前面 —— 作品库要的是「我刚做的那个」，不是最早那个。"""
     with _LOCK:
-        return [dict(j) for j in _JOBS.values()]
+        return [dict(j) for j in reversed(_JOBS.values())]
+
+
+def delete(jid: str) -> bool:
+    with _LOCK:
+        return _JOBS.pop(jid, None) is not None
 
 
 def run_async(fn, *args, **kwargs):

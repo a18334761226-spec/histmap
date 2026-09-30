@@ -12,12 +12,14 @@
 --video 会真渲染区间视频（几十秒），默认跳过；其余接口默认全测。
 """
 import argparse
+import io
 import json
 import os
 import sys
 import time
 import urllib.error
 import urllib.request
+import zipfile
 
 OK, BAD = [], []
 
@@ -49,8 +51,16 @@ def call(base, path, method="GET", body=None, raw=None, ctype=None, timeout=600)
 
 
 def check(name, cond, detail=""):
+    """报一条断言结果。
+
+    detail 只在**失败**时打出来 —— 它写的是「为什么可能不对」，
+    在 PASS 行后面跟着会读着自相矛盾（早先就出现过
+    「PASS ... 参数被忽略了？」这种自打脸的输出）。
+    想在通过时也看到数字，就把数字写进 name。
+    """
     (OK if cond else BAD).append(name)
-    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f"   {detail}" if detail else ""))
+    print(f"  {'PASS' if cond else 'FAIL'}  {name}"
+          + (f"\n          {detail}" if (detail and not cond) else ""))
     return cond
 
 
@@ -87,6 +97,16 @@ def main():
     st, page = call(B, "/")
     check("首页 / 返回 HTML", st == 200 and b"<html" in page.lower())
 
+    # 质感小样：每个预设都该有一张真渲染出来的样图，而且是能下载的
+    st, s2 = call(B, "/api/styles", timeout=900)
+    presets2 = (s2 or {}).get("presets") or []
+    missing = [p["id"] for p in presets2 if not p.get("preview")]
+    check("每个质感预设都有真实小样", not missing, f"缺: {missing}")
+    if presets2 and presets2[0].get("preview"):
+        st3, blob3 = call(B, presets2[0]["preview"], timeout=120)
+        check("质感小样可下载", st3 == 200 and len(blob3 or b"") > 3000,
+              f"status={st3} bytes={len(blob3 or b'')}")
+
     # ── 2) 每个题材都渲染一张（这是核心路径，必须逐个过）──
     for s in (scenes or []):
         sid, ds = s["id"], s.get("dates") or []
@@ -106,6 +126,21 @@ def main():
                   f"status={st2} bytes={len(blob or b'')}")
             # 取回来的必须是真 PNG，不是错误页
             check(f"[{sid}] 是 PNG", (blob or b"")[:8] == b"\x89PNG\r\n\x1a\n")
+
+            # 文案覆盖必须真的改变画面。
+            # 只检查「接口返回 200」是不够的 —— 参数被静默忽略也会返回 200。
+            # 所以比像素：给了自定义标题的图必须和默认标题的图不一样。
+            stt, rt = call(B, "/api/render", "POST",
+                           {"scene": sid, "date": d, "title": "冒烟自检标题",
+                            "theme": (s.get("themes") or ["dark"])[0],
+                            "size": "16x9", "style": "none"}, timeout=900)
+            if stt == 200 and rt.get("image"):
+                _, blob_t = call(B, rt["image"], timeout=120)
+                same = (blob_t == blob)
+                check(f"[{sid}] 文案覆盖真的改变了画面", not same,
+                      "自定义标题渲染出来的图和默认一模一样 —— 参数被忽略了？")
+            else:
+                check(f"[{sid}] 文案覆盖渲染", False, str(rt)[:120])
 
     # ── 3) 风格提取 ──
     img = args.style_image
@@ -131,9 +166,98 @@ def main():
     else:
         print("  SKIP  风格提取（没找到测试图，用 --style-image 指定）")
 
-    # ── 4) 区间视频 ──
+    # ── 4) 分镜与出片 ──
+    # 这一段是新增能力的主战场：显式分镜、每帧文案、每帧停留、导出。
+    sid = "song"
+    s = next((x for x in (scenes or []) if x["id"] == sid), None)
+    ds = (s or {}).get("dates") or []
+    theme0 = ((s or {}).get("themes") or ["dark"])[0]
+    jid_done = None
+
+    if not args.video:
+        print("  SKIP  分镜/出片/导出（加 --video 开启）")
+    elif len(ds) < 4:
+        print("  SKIP  分镜测试（宋题材没有 4 个以上日期点）")
+    else:
+        # 4a) /api/plan 只算分镜不出图
+        st, r = call(B, "/api/plan", "POST",
+                     {"scene": sid, "date_from": ds[0], "date_to": ds[-1], "hold": 0.5},
+                     timeout=120)
+        check("/api/plan 展开区间", st == 200 and r.get("n_dates") == len(ds),
+              f"n_dates={r.get('n_dates')} 期望={len(ds)}")
+
+        # 4b) 不等停留时长 + 每帧文案 + 只出图模式
+        frames = [
+            {"date": ds[0], "hold": 1.5, "title": "宋初", "subtitle": "太平兴国"},
+            {"date": ds[1], "hold": 0.3},
+            {"date": ds[2], "hold": 1.2, "footer": "口径测试"},
+            {"date": ds[3], "hold": 0.5},
+        ]
+        body = {"scene": sid, "theme": theme0, "size": "16x9", "style": "none",
+                "hold": 0.6, "mode": "frames", "frames": frames}
+        st, r = call(B, "/api/video", "POST", body, timeout=120)
+        if check("只出图模式提交", st == 200 and r.get("job"), str(r)[:140]):
+            jid_f = r["job"]
+            j = {}
+            t0 = time.time()
+            while time.time() - t0 < 1200:
+                time.sleep(2)
+                _, j = call(B, f"/api/jobs/{jid_f}", timeout=60)
+                if j.get("status") in ("done", "failed"):
+                    break
+            check("只出图模式跑完", j.get("status") == "done", str(j.get("error") or "")[:160])
+            res = j.get("result") or {}
+            check("只出图模式不产视频", not res.get("video"), str(res.get("video")))
+            check("每帧停留按分镜生效",
+                  res.get("holds") == [1.5, 0.3, 1.2, 0.5], str(res.get("holds")))
+            check("帧数=分镜长度", res.get("n_frames") == 4, str(res.get("n_frames")))
+            # 帧 ZIP
+            st2, blob = call(B, f"/api/jobs/{jid_f}/frames.zip", timeout=300)
+            import zipfile
+            okz = st2 == 200 and (blob or b"")[:2] == b"PK"
+            names = []
+            if okz:
+                try:
+                    names = zipfile.ZipFile(io.BytesIO(blob)).namelist()
+                except Exception as e:
+                    okz = False
+                    names = [f"解不开: {e}"]
+            check("帧 ZIP 可下载且条目数对", okz and len(names) == 4, str(names))
+            # 删除接口
+            std, rd = call(B, f"/api/jobs/{jid_f}", "DELETE", timeout=60)
+            check("删除任务", std == 200 and rd.get("ok"), str(rd)[:100])
+            st3, _ = call(B, f"/api/jobs/{jid_f}", timeout=30)
+            check("删除后查不到", st3 == 404, f"status={st3}")
+
+        # 4c) 出片 + 时长核对（每帧停留不同 -> 走 concat 那条路）
+        body = {"scene": sid, "theme": theme0, "size": "16x9", "style": "none",
+                "hold": 0.6, "mode": "video", "frames": frames}
+        st, r = call(B, "/api/video", "POST", body, timeout=120)
+        if check("分镜出片提交", st == 200 and r.get("job"), str(r)[:140]):
+            jid_done = r["job"]
+            j = {}
+            t0 = time.time()
+            while time.time() - t0 < 1800:
+                time.sleep(2)
+                _, j = call(B, f"/api/jobs/{jid_done}", timeout=60)
+                if j.get("status") in ("done", "failed"):
+                    break
+            check("分镜出片跑完", j.get("status") == "done", str(j.get("error") or "")[:200])
+            res = j.get("result") or {}
+            # 这是本轮新增里最容易错的一处：片子时长必须等于各帧停留之和
+            want = res.get("want_seconds")
+            got = res.get("seconds")
+            check("片子时长=各帧停留之和", want is not None and got is not None
+                  and abs(got - want) <= 0.25, f"期望 {want}s 实际 {got}s")
+            check("MP4 有 moov 且可解码", "可完整解码" in str(res.get("verify")),
+                  str(res.get("verify")))
+            st2, blob = call(B, res.get("video") or "/nonexistent", timeout=300)
+            check("MP4 走下载接口", st2 == 200 and (blob or b"")[4:8] == b"ftyp",
+                  f"status={st2} bytes={len(blob or b'')}")
+
+    # ── 4d) 区间出片（老路径，别被新分镜路径挤掉）──
     if args.video:
-        for sid in ("tang", "song", "ww2-europe"):
+        for sid in ("tang", "ww2-europe"):
             s = next((x for x in (scenes or []) if x["id"] == sid), None)
             if not s:
                 continue
@@ -142,7 +266,7 @@ def main():
                     "theme": (s.get("themes") or ["dark"])[0], "size": "16x9",
                     "style": "none", "hold": 0.5}
             st, r = call(B, "/api/video", "POST", body, timeout=120)
-            if not check(f"[{sid}] 视频任务提交", st == 200 and r.get("job"), str(r)[:120]):
+            if not check(f"[{sid}] 区间出片提交", st == 200 and r.get("job"), str(r)[:120]):
                 continue
             jid, want = r["job"], r.get("n_dates")
             # 上限是防手滑的，不是暗坑：要么全出，要么在 note 里明说抽稀了
@@ -158,15 +282,20 @@ def main():
                 _, j = call(B, f"/api/jobs/{jid}", timeout=60)
                 if j.get("status") in ("done", "failed"):
                     break
-            check(f"[{sid}] 视频任务跑完", j.get("status") == "done", str(j.get("error") or "")[:160])
+            check(f"[{sid}] 区间出片跑完", j.get("status") == "done",
+                  str(j.get("error") or "")[:160])
             res = j.get("result") or {}
             check(f"[{sid}] 帧数齐全", res.get("n_frames") == want,
                   f"n_frames={res.get('n_frames')}")
+            w2, g2 = res.get("want_seconds"), res.get("seconds")
+            check(f"[{sid}] 区间片子时长对得上",
+                  w2 is not None and g2 is not None and abs(g2 - w2) <= 0.4,
+                  f"期望 {w2}s 实际 {g2}s")
             st2, blob = call(B, res.get("video") or "/nonexistent", timeout=300)
             check(f"[{sid}] MP4 可下载且完整", st2 == 200 and (blob or b"")[4:8] == b"ftyp",
                   f"status={st2} bytes={len(blob or b'')}")
     else:
-        print("  SKIP  区间视频（加 --video 开启）")
+        print("  SKIP  区间出片（加 --video 开启）")
 
     # ── 5) 对话（需要真实 key，从 .env 读；没有就只测错误分支）──
     key = os.environ.get("SMOKE_KEY") or ""

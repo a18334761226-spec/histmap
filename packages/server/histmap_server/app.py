@@ -23,13 +23,16 @@ import base64
 import io
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.request
+import zipfile
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
+                               Response)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -63,12 +66,62 @@ MODELS = {
 }
 
 STYLE_PRESETS = [
-    {"id": "none", "label": "不加质感（原始渲染）"},
-    {"id": "atlas", "label": "古典雕版（做旧纸张）"},
-    {"id": "vintage", "label": "复古羊皮纸"},
-    {"id": "ink", "label": "宣纸水墨（需浅色主题）"},
-    {"id": "modern", "label": "现代信息图（微质感）"},
+    {"id": "none", "label": "不加质感", "desc": "引擎原始输出：干净色块 + 实线边界"},
+    {"id": "atlas", "label": "古典雕版", "desc": "做旧纸张、网点颗粒，像旧地图集的插图"},
+    {"id": "vintage", "label": "复古羊皮纸", "desc": "更黄的底色、边缘压暗，适合讲古代"},
+    {"id": "ink", "label": "宣纸水墨", "desc": "墨色渗化、纸纹明显，配浅色主题"},
+    {"id": "modern", "label": "现代信息图", "desc": "微质感、高对比，适合短视频信息流"},
 ]
+
+STYLE_PREVIEW_DIR = os.path.join(ROOT, "output", "style_previews")
+# 预览用哪个题材出样：取一个「任何机器上都能渲染」的组合
+PREVIEW_SCENE = "ww2-europe"
+PREVIEW_DATE = "1941-06-22"
+
+
+def style_preview(style_id: str) -> str | None:
+    """给每个质感预设生成一张真实的小样（首次访问时生成，之后走磁盘缓存）。
+
+    为什么不手写一张示意图：那样迟早和真实效果脱节。这里就是真渲染 + 真后期，
+    所见即所得。
+    """
+    if style_id == "none":
+        f = os.path.join(STYLE_PREVIEW_DIR, "none.jpg")
+    else:
+        f = os.path.join(STYLE_PREVIEW_DIR, f"{style_id}.jpg")
+    if os.path.exists(f) and os.path.getsize(f) > 2000:
+        return f"/media/style_previews/{os.path.basename(f)}"
+    if not topics.get(PREVIEW_SCENE):
+        return None
+    try:
+        from PIL import Image
+        os.makedirs(STYLE_PREVIEW_DIR, exist_ok=True)
+        img = topics.render(PREVIEW_SCENE, PREVIEW_DATE, "light", "16x9")
+        if style_id != "none":
+            import postfx
+            img = postfx.stylize(img, style_id, seed=7)
+        # 缩到 560 宽足够看清质感，体积压在几十 KB
+        w = 560
+        img = img.convert("RGB").resize((w, round(img.height * w / img.width)),
+                                        Image.LANCZOS)
+        img.save(f, quality=84, optimize=True)
+    except Exception as e:
+        print(f"[style] 生成 {style_id} 小样失败：{type(e).__name__}: {e}")
+        return None
+    return f"/media/style_previews/{os.path.basename(f)}"
+
+
+@app.get("/api/styles")
+def api_styles(with_preview: int = 1):
+    # 默认带上真实小样；with_preview=0 时只回清单（冒烟自检/脚本用，快）
+    if not with_preview:
+        return {"presets": STYLE_PRESETS}
+    out = []
+    for p in STYLE_PRESETS:
+        q = dict(p)
+        q["preview"] = style_preview(p["id"])
+        out.append(q)
+    return {"presets": out}
 
 
 # ════════════════════════════════════════════════════════════
@@ -85,11 +138,6 @@ def health():
 def api_scenes():
     """题材列表。题材是**数据**（data/topics/topics.json），不是代码。"""
     return {"scenes": topics.list_topics()}
-
-
-@app.get("/api/styles")
-def api_styles():
-    return {"presets": STYLE_PRESETS}
 
 
 @app.get("/api/models")
@@ -143,6 +191,10 @@ class RenderReq(BaseModel):
     style: str = "none"                       # 预设质感
     style_profile: dict | None = None         # 从参考图提取的 profile
     strength: float = 1.0
+    # 文案覆盖：None = 用题材默认（事件副标题/口径声明），"" = 明确留白。
+    title: str | None = None
+    subtitle: str | None = None
+    footer: str | None = None
 
 
 def _apply_quality(img, req: RenderReq):
@@ -172,7 +224,8 @@ def api_render(req: RenderReq):
         req.theme = t.themes[0]
     t0 = time.time()
     try:
-        img = topics.render(req.scene, req.date, req.theme, req.size)
+        img = topics.render(req.scene, req.date, req.theme, req.size,
+                            title=req.title, subtitle=req.subtitle, footer=req.footer)
     except FileNotFoundError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -195,20 +248,64 @@ def api_render(req: RenderReq):
 # ════════════════════════════════════════════════════════════
 # 3) 视频
 # ════════════════════════════════════════════════════════════
+class FrameReq(BaseModel):
+    """分镜里的一帧。文案留 None 表示「用题材默认」。"""
+    date: str
+    hold: float | None = None                 # 本帧停留秒数，缺省用 hold
+    title: str | None = None
+    subtitle: str | None = None
+    footer: str | None = None
+
+
 class VideoReq(BaseModel):
     scene: str
-    date_from: str
-    date_to: str
+    # 两种给帧的方式：
+    #   1) date_from/date_to —— 按区间自动挑（快捷）
+    #   2) frames —— 显式分镜，顺序、每帧文案、每帧停留都由调用方定（编辑器用）
+    date_from: str = ""
+    date_to: str = ""
+    frames: list[FrameReq] | None = None
     theme: str = "dark"
     size: str = "16x9"
     style: str = "none"
     style_profile: dict | None = None
     fps: int = 24
-    hold: float = 0.30                        # 每个年份停留秒数
+    hold: float = 0.30                        # 每帧默认停留秒数
     # 上限只用来兜住手滑（比如拿月份当区间滑到几万帧），不该成为常见区间的暗坑：
     # 二战 1939–1945 有 146 个时间点，卡在 60 就是「界面说 146 张、实际只出 60 张」。
     max_frames: int = 240
     fade: float = 0.20                        # 交叉溶解时长
+    # "video" = 出完全部图再合成片子；"frames" = 只出图，不调 ffmpeg。
+    # 后者是给分镜预演用的：先在浏览器里照真实节奏放一遍，满意了再出片，
+    # 不用为了看一眼效果先等一次视频合成。
+    mode: str = "video"
+
+
+def plan_frames(req: VideoReq) -> list[FrameReq]:
+    """把两种给帧方式统一成一份分镜。
+
+    显式 frames 时按用户给的顺序原样执行（顺序就是片子的叙事），
+    只做两项校验：日期必须该题材真能渲染、帧数不超上限。
+    """
+    t = topics.get(req.scene)
+    if not t:
+        return []
+    supported = t.dates() or []
+    if req.frames:
+        out = []
+        for f in req.frames[:req.max_frames]:
+            d = f.date
+            if d not in supported:
+                if not supported:
+                    continue
+                try:
+                    d = min(supported, key=lambda x: abs(_days(x) - _days(d)))
+                except Exception:
+                    continue
+            out.append(f.model_copy(update={"date": d}))
+        return out
+    return [FrameReq(date=d) for d in
+            pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)]
 
 
 def pick_dates(scene_id: str, date_from: str, date_to: str, max_frames: int):
@@ -261,73 +358,160 @@ def _animate_job(jid: str, req: VideoReq):
     os.makedirs(fdir, exist_ok=True)
     mp4 = os.path.join(out_dir, "video.mp4")
 
-    dates = pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)
-    if not dates:
+    frames = plan_frames(req)
+    if not frames:
         jobs.update(jid, status="failed", error="这个区间里没有可渲染的日期")
         return
-    jobs.update(jid, status="running", total=len(dates), frames=[],
-                message=f"准备渲染 {len(dates)} 张")
+    n = len(frames)
+    jobs.update(jid, status="running", total=n, frames=[],
+                message=f"准备渲染 {n} 张")
 
     # ── 1) 逐张出图 ──
-    urls, paths = [], []
-    for i, d in enumerate(dates):
-        img = topics.render(req.scene, d, req.theme, req.size)
-        img = _apply_quality(img, RenderReq(scene=req.scene, date=d, theme=req.theme,
+    urls, holds = [], []
+    for i, f in enumerate(frames):
+        holds.append(max(0.05, f.hold if f.hold else req.hold))
+        img = topics.render(req.scene, f.date, req.theme, req.size,
+                            title=f.title, subtitle=f.subtitle, footer=f.footer)
+        img = _apply_quality(img, RenderReq(scene=req.scene, date=f.date, theme=req.theme,
                                             size=req.size, style=req.style,
                                             style_profile=req.style_profile))
         p = os.path.join(fdir, f"{i:04d}.png")
         img.save(p)
-        paths.append(p)
         urls.append(f"/media/jobs/{jid}/frames/{i:04d}.png")
-        jobs.update(jid, frames=list(urls),
-                    progress=round((i + 1) / len(dates) * 0.85, 3),
-                    message=f"出图 {i+1}/{len(dates)} · {d[:10]}")
+        jobs.update(jid, frames=list(urls), holds=holds,
+                    progress=round((i + 1) / n * 0.85, 3),
+                    message=f"出图 {i+1}/{n} · {str(f.date)[:10]}")
 
     # ── 2) 合成视频 ──
+    if req.mode == "frames":
+        # 只要图：把每帧的停留时长一并带上，前端可以照真实节奏预演
+        jobs.update(jid, status="done", progress=1.0, message="全部图片已出",
+                    result={"video": None, "frames": urls, "n_frames": len(urls),
+                            "holds": [round(h, 2) for h in holds],
+                            "seconds": round(sum(holds), 1), "size": req.size,
+                            "verify": "只出图模式", "zip": f"/media/jobs/{jid}/frames.zip"})
+        return
+
     jobs.update(jid, message="合成视频…", progress=0.9)
     ff = M.find_ffmpeg()
     errf = open(os.path.join(out_dir, "ffmpeg.log"), "w",
                 encoding="utf-8", errors="replace")
-    # 每张图在片子里停留 req.hold 秒：
-    # 把**输入**帧率设成 1/hold，输出帧率设成 fps，ffmpeg 会自动补帧。
-    # （直接把输入输出都设成 fps 的话，每张只闪 1/fps 秒，等于没有停留）
-    in_fps = max(0.05, 1.0 / max(0.05, req.hold))
-    cmd = [ff, "-y", "-loglevel", "error",
-           "-framerate", f"{in_fps:.4f}",
-           "-i", os.path.join(fdir, "%04d.png"),
-           "-r", str(req.fps),
-           "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-           "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4]
+    cmd = build_ffmpeg_cmd(ff, fdir, mp4, holds, req.fps, out_dir)
     rc = subprocess.call(cmd, stderr=errf)
     errf.close()
     ok, why = M.verify_mp4(ff, mp4)
     if rc != 0 or not ok:
         jobs.update(jid, status="failed", error=f"ffmpeg rc={rc}；{why}")
         return
-    secs = round(len(urls) * req.hold, 1)
+    # 时长核对：说了几秒就该是几秒。不核的话，每帧停留这种新功能
+    # 会「看起来跑通了」但片子长度不对（concat 的 duration 语义就栽在这）。
+    want = sum(holds)
+    got = M.probe_duration(ff, mp4)
+    if got is not None and abs(got - want) > max(0.25, 1.5 / max(1, req.fps)):
+        jobs.update(jid, status="failed",
+                    error=f"片子时长对不上：各帧停留合计 {want:.2f}s，"
+                          f"实际 {got:.2f}s。stopped at ffmpeg 合成阶段。")
+        return
+    secs = round(got, 2) if got is not None else round(want, 1)
     jobs.update(jid, status="done", progress=1.0, message="完成",
                 result={"video": f"/media/jobs/{jid}/video.mp4",
                         "frames": urls, "n_frames": len(urls),
-                        "seconds": secs, "size": req.size, "verify": why})
+                        "holds": [round(h, 2) for h in holds],
+                        "seconds": secs, "want_seconds": round(want, 2),
+                        "size": req.size, "verify": why,
+                        "zip": f"/media/jobs/{jid}/frames.zip"})
+
+
+def plan_holds(holds: list[float], fps: int) -> list[int]:
+    """把「每帧停留几秒」换算成「每帧占几个输出帧」。
+
+    必须用累计边界相减，不能各帧单独 round：单独 round 的误差会一路累加，
+    146 帧能漂出一两秒。这样算出来总帧数恰好是 round(总时长 × fps)，
+    误差永远小于半帧。
+    """
+    out, prev = [], 0
+    acc = 0.0
+    for h in holds:
+        acc += max(0.05, h)
+        cur = round(acc * fps)
+        out.append(max(1, cur - prev))
+        prev = cur
+    return out
+
+
+def build_ffmpeg_cmd(ff: str, fdir: str, mp4: str, holds: list[float],
+                     fps: int, out_dir: str) -> list[str]:
+    """每帧**各自**的停留时长都要精确生效。
+
+    走过的弯路：先是用 concat 的 `duration` 指令写每帧秒数 —— 看着最像对的写法，
+    实测 3.5 秒的片子出来 4.0 秒（duration 管的是「下一帧从什么时间戳开始」，
+    末帧还被多算一次）。换成「按帧数重复引用同一张图」之后又踩第二脚：
+    concat 解复用器**不认 `-framerate`**，而且不给输入帧率时整条片子会塌成
+    4 帧 / 0.17 秒，只有把 `-r fps` 放在 `-i` **之前**才真的按帧数计时。
+    这两脚都是量出来的，不是猜出来的：src/probe_concat_duration.py 留了对照实验。
+    """
+    counts = plan_holds(holds, fps)
+    # 判断依据是「停留时长是否一致」，不是「帧数是否一致」：
+    # 0.6 秒在 24fps 下是 14.4 帧，各帧会摊成 14/15/14/15…，
+    # 帧数看着不齐，但统一帧率那条路反而更准（3.600 vs 3.583）。
+    if holds and len(set(round(h, 4) for h in holds)) <= 1:
+        # 每帧一样长时走老路：一条 -framerate 就够，省掉几千行清单
+        in_fps = max(0.05, 1.0 / max(0.05, holds[0]))
+        return [ff, "-y", "-loglevel", "error", "-framerate", f"{in_fps:.4f}",
+                "-i", os.path.join(fdir, "%04d.png"), "-r", str(fps),
+                "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4]
+
+    listp = os.path.join(out_dir, "frames.txt")
+    with open(listp, "w", encoding="utf-8") as fh:
+        for i, n in enumerate(counts):
+            p = os.path.join(fdir, f"{i:04d}.png").replace("\\", "/")
+            for _ in range(n):
+                fh.write(f"file '{p}'\n")
+    # 输入侧那个 -r 不能省：它给 concat 解复用器定帧率，少了它按帧数计时不成立。
+    return [ff, "-y", "-loglevel", "error", "-r", str(fps),
+            "-f", "concat", "-safe", "0", "-i", listp, "-r", str(fps),
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4]
 
 
 @app.post("/api/video")
 def api_video(req: VideoReq):
     if not topics.get(req.scene):
         raise HTTPException(404, "没有这个题材")
+    planned = plan_frames(req)
+    if not planned:
+        raise HTTPException(400, "这个区间里没有可渲染的日期")
     jid = jobs.new_job("animate", req.model_dump(exclude={"style_profile"}))
     # jid 只走位置参数。早先写成 run_async(fn, jid, req, jid=jid)，
     # 同一个 jid 传了两次 → TypeError: got multiple values for argument 'jid'，
     # 视频这条路从第一版起就是坏的（当时没测到）。
     jobs.run_async(_animate_job, jid, req)
-    sel = pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)
     # 截断了就明说，别让界面显示的数字和实际出的帧数对不上
-    lo, hi = sorted((_days(req.date_from), _days(req.date_to)))
-    in_range = sum(1 for d in (topics.get(req.scene).dates() or []) if lo <= _days(d) <= hi)
-    note = (f"区间内 {in_range} 个时间点，超过上限 {req.max_frames}，"
-            f"已均匀抽稀为 {len(sel)} 帧" if in_range > len(sel) else "")
-    return {"job": jid, "n_dates": len(sel), "in_range": in_range,
-            "max_frames": req.max_frames, "note": note}
+    note = ""
+    if not req.frames:
+        lo, hi = sorted((_days(req.date_from), _days(req.date_to)))
+        in_range = sum(1 for d in (topics.get(req.scene).dates() or [])
+                       if lo <= _days(d) <= hi)
+        if in_range > len(planned):
+            note = (f"区间内 {in_range} 个时间点，超过上限 {req.max_frames}，"
+                    f"已均匀抽稀为 {len(planned)} 帧")
+    return {"job": jid, "n_dates": len(planned), "max_frames": req.max_frames,
+            "dates": [f.date for f in planned], "note": note,
+            "est_seconds": round(sum(
+                max(0.05, f.hold if f.hold else req.hold) for f in planned), 1)}
+
+
+@app.post("/api/plan")
+def api_plan(req: VideoReq):
+    """只算分镜、不出图。编辑器用它把「区间」展开成可编辑的帧列表。"""
+    if not topics.get(req.scene):
+        raise HTTPException(404, "没有这个题材")
+    planned = plan_frames(req)
+    return {"frames": [{"date": f.date, "hold": f.hold} for f in planned],
+            "n_dates": len(planned),
+            "est_seconds": round(sum(
+                max(0.05, f.hold if f.hold else req.hold) for f in planned), 1)}
 
 
 @app.get("/api/jobs")
@@ -341,6 +525,61 @@ def api_job(jid: str):
     if not j:
         raise HTTPException(404, "没有这个任务")
     return j
+
+
+@app.delete("/api/jobs/{jid}")
+def api_job_delete(jid: str):
+    """删任务。顺手把磁盘产物一起清掉，否则 output/jobs 会一直涨。"""
+    if not jobs.get(jid):
+        raise HTTPException(404, "没有这个任务")
+    jobs.delete(jid)
+    d = os.path.join(ROOT, "output", "jobs", jid)
+    if os.path.isdir(d):
+        shutil.rmtree(d, ignore_errors=True)
+    return {"ok": True, "deleted": jid}
+
+
+@app.get("/api/jobs/{jid}/frames.zip")
+def api_frames_zip(jid: str):
+    """把这一单的全部帧打包。短视频博主真正要带走的就是这批素材。"""
+    j = jobs.get(jid)
+    if not j:
+        raise HTTPException(404, "没有这个任务")
+    res = j.get("result") or {}
+    urls = res.get("frames") or j.get("frames") or []
+    if not urls:
+        raise HTTPException(400, "这个任务还没有出图")
+    fdir = os.path.join(ROOT, "output", "jobs", jid, "frames")
+    if not os.path.isdir(fdir):
+        raise HTTPException(404, "帧文件不在磁盘上")
+    buf = io.BytesIO()
+    scene = (j.get("params") or {}).get("scene") or "map"
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        # 帧名带上年份和序号，拿到素材的人不用回来查表
+        dates = (j.get("params") or {}).get("frames") or []
+        for i, u in enumerate(urls):
+            p = os.path.join(fdir, f"{i:04d}.png")
+            if not os.path.exists(p):
+                continue
+            yr = ""
+            if i < len(dates) and isinstance(dates[i], dict):
+                yr = str(dates[i].get("date") or "")[:10]
+            z.write(p, f"{scene}_{yr or f'{i:03d}'}_{i+1:03d}.png")
+    buf.seek(0)
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="{scene}_{jid}_frames.zip"'})
+
+
+@app.get("/api/jobs/{jid}/video.mp4")
+def api_video_download(jid: str):
+    """带文件名下载，别让浏览器直接内联播放。"""
+    p = os.path.join(ROOT, "output", "jobs", jid, "video.mp4")
+    if not os.path.exists(p):
+        raise HTTPException(404, "还没有视频")
+    scene = ((jobs.get(jid) or {}).get("params") or {}).get("scene") or "map"
+    return FileResponse(p, media_type="video/mp4",
+                        filename=f"{scene}_{jid}.mp4")
 
 
 # ════════════════════════════════════════════════════════════
