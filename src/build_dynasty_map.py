@@ -156,7 +156,7 @@ def stable_color(name: str, all_names: list) -> str:
     return PALETTE[h % len(PALETTE)]
 
 
-def build(topic_id: str, year: int, max_km: float = 260.0,
+def build(topic_id: str, year: int, max_km: float | None = None,
           simplify: float = 0.02, force: bool = False, quiet: bool = False):
     from histmap_server import topics as T
 
@@ -165,6 +165,12 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
         raise SystemExit(f"没有这个题材: {topic_id}")
     if t.kind != "dynasty":
         raise SystemExit(f"题材 {topic_id} 不是 dynasty 类（kind={t.kind}）")
+
+    # 归并半径由**题材数据**决定，不写死：唐宋的州治密（约 150 km 一个），
+    # 260 km 够用；明清的省治能隔上千公里，260 km 会把中间地带全丢掉，
+    # 结果新疆、西藏各飘一块孤岛（实测）。
+    if max_km is None:
+        max_km = float(t.raw.get("max_km") or 260.0)
 
     dst = os.path.join(PROC, f"{topic_id}_{year}_map.geojson")
     if os.path.exists(dst) and not force:
@@ -212,11 +218,18 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
         print(f"    归属方 {len(set(owner.values()))} 个")
 
     # 只保留今年有归属的单元，且必须在坐标表里（两边都归一到简体再比）
-    by_name = {_norm(u["name"]): u for u in units}
+    # 一个单元可以有**多个锚点**：新疆一个乌鲁木齐代表不了 166 万平方公里。
+    # 靠放大归并半径去够剩下的地方，会把明朝也一起放大到吞掉整个中国（实测）；
+    # 正解是给大省多写几个治所，判据仍是「离该单元任一锚点最近」。
+    by_name: dict = {}
+    for u in units:
+        by_name.setdefault(_norm(u["name"]), []).append((u["lon"], u["lat"]))
     active = {_norm(n): o for n, o in owner.items() if _norm(n) in by_name}
     missing = [n for n in owner if _norm(n) not in by_name]
     if not quiet:
-        print(f"[2] 可定位单元 {len(active)} 个；缺坐标 {len(missing)} 个"
+        multi = sum(1 for v in by_name.values() if len(v) > 1)
+        print(f"[2] 可定位单元 {len(active)} 个（其中 {multi} 个有多个锚点）；"
+              f"缺坐标 {len(missing)} 个"
               + (f": {' '.join(sorted(missing)[:15])}" if missing else ""))
 
     # 归属方显示名（方镇表列名用初名，正文用后来的号）
@@ -231,13 +244,13 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
     if not quiet:
         print(f"[3] 县多边形 {len(counties)} 个")
 
-    # ── 县 → 单元（只在当年存在的单元里选最近） ──
-    cand = [(n, by_name[n]["lon"], by_name[n]["lat"]) for n in active]
+    # ── 县 → 单元（只在当年存在的单元里选最近；多锚点取最近的那个锚） ──
+    cand = [(n, by_name[n]) for n in active]
     assigned, far = {}, 0
     for c in counties:
         best, bd = None, 1e18
-        for n, lon, lat in cand:
-            d = haversine_km(c["cx"], c["cy"], lon, lat)
+        for n, pts in cand:
+            d = min(haversine_km(c["cx"], c["cy"], lo, la) for lo, la in pts)
             if d < bd:
                 bd, best = d, n
         if bd > max_km:
@@ -438,7 +451,8 @@ def main():
     ap.add_argument("--topic", required=True)
     ap.add_argument("--year", type=int, default=None,
                     help="单年构建；用 --all-years 时可不填")
-    ap.add_argument("--max-km", type=float, default=260.0)
+    ap.add_argument("--max-km", type=float, default=None,
+                    help="归并半径；缺省读题材数据里的 max_km，再缺省 260")
     ap.add_argument("--simplify", type=float, default=0.02)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--quiet", action="store_true", help="只报错误，不打印过程")

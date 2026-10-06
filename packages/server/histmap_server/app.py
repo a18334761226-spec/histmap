@@ -58,15 +58,41 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 
 # ── 可选模型清单（前端下拉用；实际能用哪些取决于用户的 key） ──
 MODELS = {
+    # 这些都是 OpenAI 兼容协议，换一家只要改 Base URL + 模型名 + Key。
+    # 挑模型看的是**出控制表的质量**（年份齐不齐、单元名对不对），
+    # 不是「谁画得好看」—— 图是代码画的，模型不碰像素。
     "chat": [
-        {"id": "Qwen/Qwen2.5-7B-Instruct", "label": "Qwen2.5-7B（快、便宜）"},
-        {"id": "Qwen/Qwen2.5-32B-Instruct", "label": "Qwen2.5-32B（更会听懂话）"},
-        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B（最强，最贵）"},
-        {"id": "deepseek-ai/DeepSeek-V3", "label": "DeepSeek-V3"},
+        {"id": "Qwen/Qwen2.5-7B-Instruct", "label": "Qwen2.5-7B（快、便宜）",
+         "base": "https://api.siliconflow.cn/v1"},
+        {"id": "Qwen/Qwen2.5-32B-Instruct", "label": "Qwen2.5-32B（更会听懂话）",
+         "base": "https://api.siliconflow.cn/v1"},
+        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B（实测可用）",
+         "base": "https://api.siliconflow.cn/v1"},
+        {"id": "deepseek-ai/DeepSeek-V3", "label": "DeepSeek-V3",
+         "base": "https://api.siliconflow.cn/v1"},
+        # 火山方舟（豆包）：模型名要填**接入点 ID**（ep-…）或模型 ID，
+        # 在方舟控制台「在线推理 → 接入点」里拿。
+        {"id": "doubao-seed-1-6-250615", "label": "豆包 Seed 1.6（火山方舟）",
+         "base": "https://ark.cn-beijing.volces.com/api/v3"},
+        {"id": "doubao-1-5-pro-32k-250115", "label": "豆包 1.5 Pro 32k（火山方舟）",
+         "base": "https://ark.cn-beijing.volces.com/api/v3"},
+        # 阿里百炼（通义千问）
+        {"id": "qwen-plus", "label": "通义千问 plus（阿里百炼）",
+         "base": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
+        # 智谱
+        {"id": "glm-4-plus", "label": "GLM-4-Plus（智谱）",
+         "base": "https://open.bigmodel.cn/api/paas/v4"},
     ],
     "image_edit": [
-        {"id": "Qwen/Qwen-Image-Edit-2509", "label": "Qwen-Image-Edit-2509"},
-        {"id": "Qwen/Qwen-Image-Edit", "label": "Qwen-Image-Edit"},
+        {"id": "Qwen/Qwen-Image-Edit-2509", "label": "Qwen-Image-Edit-2509",
+         "base": "https://api.siliconflow.cn/v1"},
+        {"id": "Qwen/Qwen-Image-Edit", "label": "Qwen-Image-Edit",
+         "base": "https://api.siliconflow.cn/v1"},
+        # 注意：图像模型在这个项目里**不用来画地图**。用它的地方是
+        # 「生成没有语义的材质」（纸纹/做旧/边框），生成完由代码把地图合成上去。
+        # 拿它整张重画地图，实测结构相似度会掉到 NCC −0.075。
+        {"id": "doubao-seedream-3-0-t2i-250415", "label": "豆包 Seedream 3.0（方舟·画材质）",
+         "base": "https://ark.cn-beijing.volces.com/api/v3"},
     ],
 }
 

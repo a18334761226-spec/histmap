@@ -1,12 +1,12 @@
 {
  "1864": {
-  "Prussia": [
+  "普鲁士": [
    "Berlin",
    "Brandenburg",
    "Sachsen",
    "Schleswig-Holstein"
   ],
-  "Austria": [
+  "奥地利": [
    "Burgenland",
    "Kärnten",
    "Niederösterreich",
@@ -17,7 +17,7 @@
    "Vorarlberg",
    "Wien"
   ],
-  "Independent": [
+  "其他邦国": [
    "Baden-Württemberg",
    "Bayern",
    "Bremen",
@@ -31,7 +31,7 @@
    "Sachsen-Anhalt",
    "Thüringen"
   ],
-  "France": [
+  "法国": [
    "Auvergne-Rhône-Alpes",
    "Bourgogne-Franche-Comté",
    "Bretagne",
@@ -46,7 +46,7 @@
    "Provence-Alpes-Côte d'Azur",
    "Île-de-France"
   ],
-  "Denmark": [
+  "丹麦": [
    "Hovedstaden",
    "Midtjylland",
    "Nordjylland",
@@ -55,7 +55,7 @@
   ]
  },
  "1866": {
-  "Prussia": [
+  "普鲁士": [
    "Berlin",
    "Brandenburg",
    "Sachsen",
@@ -64,7 +64,7 @@
    "Niedersachsen",
    "Sachsen-Anhalt"
   ],
-  "Austria": [
+  "奥地利": [
    "Burgenland",
    "Kärnten",
    "Niederösterreich",
@@ -75,7 +75,7 @@
    "Vorarlberg",
    "Wien"
   ],
-  "Independent": [
+  "其他邦国": [
    "Baden-Württemberg",
    "Bayern",
    "Bremen",
@@ -86,7 +86,7 @@
    "Saarland",
    "Thüringen"
   ],
-  "France": [
+  "法国": [
    "Auvergne-Rhône-Alpes",
    "Bourgogne-Franche-Comté",
    "Bretagne",
@@ -101,7 +101,7 @@
    "Provence-Alpes-Côte d'Azur",
    "Île-de-France"
   ],
-  "Denmark": [
+  "丹麦": [
    "Hovedstaden",
    "Midtjylland",
    "Nordjylland",
@@ -110,7 +110,7 @@
   ]
  },
  "1871": {
-  "Prussia": [
+  "普鲁士": [
    "Berlin",
    "Brandenburg",
    "Sachsen",
@@ -128,7 +128,7 @@
    "Saarland",
    "Thüringen"
   ],
-  "Austria": [
+  "奥地利": [
    "Burgenland",
    "Kärnten",
    "Niederösterreich",
@@ -139,7 +139,7 @@
    "Vorarlberg",
    "Wien"
   ],
-  "France": [
+  "法国": [
    "Auvergne-Rhône-Alpes",
    "Bourgogne-Franche-Comté",
    "Bretagne",
@@ -154,7 +154,7 @@
    "Provence-Alpes-Côte d'Azur",
    "Île-de-France"
   ],
-  "Denmark": [
+  "丹麦": [
    "Hovedstaden",
    "Midtjylland",
    "Nordjylland",
@@ -165,10 +165,10 @@
  "_comment": "由 new_topic.py 生成的题材规格，可直接手改。",
  "_footer": "本地图使用的是现代行政界线，而非1864-1871年间的实际界线。",
  "_palette": {
-  "Prussia": "#4a6fa5",
-  "Austria": "#9c5b52",
-  "France": "#a08a5c",
-  "Independent": "#6f8a5a"
+  "普鲁士": "#4a6fa5",
+  "奥地利": "#9c5b52",
+  "法国": "#a08a5c",
+  "其他邦国": "#6f8a5a"
  },
  "_era": {
   "1864": "普鲁士与奥地利联合对抗丹麦",

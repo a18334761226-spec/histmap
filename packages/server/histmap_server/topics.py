@@ -596,6 +596,48 @@ def rings_of(geom: dict) -> list:
     return out
 
 
+def _fit_frame_bbox(regions, base_bbox, floor: float = 0.62):
+    """按**这一帧自己的数据**取景，而不是全题材共用一个框。
+
+    为什么必须逐帧算：明清的并集范围包含新疆、西藏（要到 1700/1820 才有），
+    而 1644 只有东部有内容 —— 用并集取景的话，那一帧的画面被压在右下角，
+    左边大片空白、标注也小到看不清（实测就是这样）。
+
+    逐帧取景的副作用是「每帧比例尺不同」，但那恰好是想要的：
+    从 1400 到 1820 会形成镜头缓缓拉远的效果。
+
+    下界 floor 防止某一帧只有一小块数据时把镜头怼得过近。
+    """
+    xs, ys = [], []
+    for r in regions:
+        b = r.bbox()
+        if not b:
+            continue
+        xs += [b[0], b[2]]
+        ys += [b[1], b[3]]
+    if not xs:
+        return base_bbox
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+
+    bw, bh = base_bbox[2] - base_bbox[0], base_bbox[3] - base_bbox[1]
+    w, h = x1 - x0, y1 - y0
+    # 内容太窄/太扁时（比如只剩一条），按底框的比例撑开，避免退化成一条线
+    w = max(w, bw * 0.25)
+    h = max(h, bh * 0.25)
+    # 不小于底框的 floor 倍
+    w, h = max(w, bw * floor), max(h, bh * floor)
+
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    pad = 0.04
+    w, h = w * (1 + pad), h * (1 + pad)
+    # 别超出底框范围：超了就以底框为准
+    nx0, nx1 = max(base_bbox[0], cx - w / 2), min(base_bbox[2], cx + w / 2)
+    ny0, ny1 = max(base_bbox[1], cy - h / 2), min(base_bbox[3], cy + h / 2)
+    if nx1 - nx0 < 1e-6 or ny1 - ny0 < 1e-6:
+        return base_bbox
+    return [nx0, ny0, nx1, ny1]
+
+
 def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                     title: str | None = None, subtitle: str | None = None,
                     footer: str | None = None,
@@ -650,8 +692,8 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
         prof, legend = _style_colors(style, fr, legend, topic, theme,
                                      style_profile, strength)
     r = Renderer(style, lay, projection="mercator", supersample=2)
-    img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
-                         legend_title="所属政权")
+    img = r.render_frame(fr, bbox=_fit_frame_bbox(regions, topic.bbox),
+                         legend_items=legend, legend_title="所属政权")
     note = footer if footer is not None else (
         _topic_json(topic).get("_footer")
         or gj.get("_meta", {}).get("method") or topic.source_note)

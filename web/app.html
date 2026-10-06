@@ -539,14 +539,21 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
     <div class="f"><label>API 服务</label>
       <select id="sPreset">
         <option value="https://api.siliconflow.cn/v1">硅基流动（国内直连）</option>
+        <option value="https://ark.cn-beijing.volces.com/api/v3">火山方舟 · 豆包</option>
+        <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">阿里百炼 · 通义千问</option>
+        <option value="https://open.bigmodel.cn/api/paas/v4">智谱 · GLM</option>
         <option value="https://api-inference.modelscope.cn/v1">魔搭 ModelScope</option>
         <option value="__custom__">自定义</option>
       </select></div>
     <div class="f"><label>Base URL</label><input type="text" id="sBase"></div>
     <div class="f"><label>API Key</label><input type="text" id="sKey" placeholder="sk-…" autocomplete="off"></div>
-    <div class="f"><label>对话模型</label><input type="text" id="sChat"></div>
-    <div class="note">这个工具不调用任何图像模型：图是代码画的，参考图风格是量出来的
-      （纸张色/纹理/颗粒/暗角），不是让模型「照着画」。</div>
+    <div class="f"><label>对话模型</label><input type="text" id="sChat"
+      placeholder="Qwen/Qwen2.5-72B-Instruct"></div>
+    <div class="note">这个工具不调用任何图像模型来画地图：图是代码画的，参考图风格是**量**出来的
+      （纸张色/纹理/颗粒/暗角），不是让模型「照着画」。
+      图像模型只用来生成**没有语义的材质**（纸纹、做旧、边框），生成完由代码把地图合成上去。
+      <br><br>换模型只影响「起草题材」的质量 —— 年份齐不齐、单元名对不对。
+      豆包的模型名要填火山方舟控制台里的**接入点 ID**（ep-…）。</div>
     <div class="acts">
       <button class="btn gh" id="sClear">清空</button>
       <button class="btn pri" id="sSave">保存</button>
@@ -1283,7 +1290,11 @@ function restore(job){
 function loadCfg(){
   $('#sBase').value = cfg.base || ''; $('#sKey').value = cfg.key || '';
   $('#sChat').value = cfg.chat || '';
-  const known = ['https://api.siliconflow.cn/v1','https://api-inference.modelscope.cn/v1'];
+  const known = ['https://api.siliconflow.cn/v1',
+                 'https://ark.cn-beijing.volces.com/api/v3',
+                 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                 'https://open.bigmodel.cn/api/paas/v4',
+                 'https://api-inference.modelscope.cn/v1'];
   $('#sPreset').value = known.includes(cfg.base) ? cfg.base : (cfg.base ? '__custom__' : known[0]);
   const has = !!cfg.key;
   $('#keyPill').classList.toggle('on', has);
