@@ -142,29 +142,89 @@ def main():
             else:
                 check(f"[{sid}] 文案覆盖渲染", False, str(rt)[:120])
 
-    # ── 3) 风格提取 ──
-    img = args.style_image
-    if not img:
-        cand = os.path.join("site", "assets")
-        if os.path.isdir(cand):
-            for f in sorted(os.listdir(cand)):
-                if f.lower().endswith((".png", ".jpg", ".jpeg")):
-                    img = os.path.join(cand, f)
-                    break
-    if img and os.path.exists(img):
-        with open(img, "rb") as f:
+    # ── 3) 风格抽取 → 套用（用户要的主线，必须逐条断言）──
+    # 造一张特征明确的参考图，保证每次跑结果可比、不依赖仓库里有没有素材
+    refdir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "output", "style_refs")
+    os.makedirs(refdir, exist_ok=True)
+    ref = os.path.join(refdir, "smoke_ref.png")
+    if not os.path.exists(ref):
+        try:
+            from PIL import Image, ImageDraw
+            im = Image.new("RGB", (480, 300), (18, 42, 74))       # 冷青蓝图
+            d = ImageDraw.Draw(im)
+            for i in range(0, 300, 24):
+                d.line([(0, i), (480, i)], fill=(30, 62, 104))
+            for i in range(0, 480, 24):
+                d.line([(i, 0), (i, 300)], fill=(30, 62, 104))
+            d.rectangle([60, 60, 200, 140], outline=(150, 210, 240), width=3)
+            im.save(ref)
+        except Exception as e:
+            print(f"  SKIP  风格主线（造参考图失败：{e}）")
+            ref = None
+
+    if ref and os.path.exists(ref):
+        with open(ref, "rb") as f:
             blob = f.read()
         # 故意不设 Content-Type（前端 FormData 就是这样）—— 后端不该依赖它
         boundary = "----smoke"
         body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
-                f"filename=\"{os.path.basename(img)}\"\r\nContent-Type: image/png\r\n\r\n"
+                f"filename=\"{os.path.basename(ref)}\"\r\nContent-Type: image/png\r\n\r\n"
                 ).encode() + blob + f"\r\n--{boundary}--\r\n".encode()
         st, r = call(B, "/api/style/extract", "POST", raw=body,
                      ctype=f"multipart/form-data; boundary={boundary}", timeout=600)
-        check("风格提取（含无 Content-Type 依赖）", st == 200 and r.get("profile"),
+        prof = (r or {}).get("profile") or {}
+        check("风格提取（含无 Content-Type 依赖）", st == 200 and prof,
               f"status={st} {str(r)[:120]}")
+        miss = [k for k in ("palette", "lum_quantiles", "saturation", "grain",
+                            "vignette", "white_balance_gain") if k not in prof]
+        check("提取出的 profile 字段完整（前端要靠它回传）", not miss, f"缺 {miss}")
+
+        s0 = next((x for x in (scenes or []) if x["id"] == "song"), None)
+        ds0 = (s0 or {}).get("dates") or []
+        if prof and ds0:
+            d0 = ds0[len(ds0) // 2]
+            th = (s0.get("themes") or ["light"])[0]
+            imgs = {}
+            for lab, extra in (("原图", {"style_profile": None}),
+                               ("强度0", {"style_profile": prof, "strength": 0.0}),
+                               ("强度1", {"style_profile": prof, "strength": 1.0})):
+                st2, r2 = call(B, "/api/render", "POST",
+                               dict({"scene": "song", "date": d0, "theme": th,
+                                     "size": "16x9", "style": "none"}, **extra),
+                               timeout=900)
+                if st2 == 200 and r2.get("image"):
+                    _, imgs[lab] = call(B, r2["image"], timeout=180)
+                else:
+                    imgs[lab] = None
+            if all(imgs.values()):
+                def png_diff(a, b):
+                    import numpy as np
+                    from PIL import Image
+                    x = np.asarray(Image.open(io.BytesIO(a)).convert("RGB"), dtype=np.float32)
+                    y = np.asarray(Image.open(io.BytesIO(b)).convert("RGB"), dtype=np.float32)
+                    return float(np.abs(x - y).mean())
+                d0d = png_diff(imgs["原图"], imgs["强度0"])
+                d1d = png_diff(imgs["原图"], imgs["强度1"])
+                check("风格强度 0 等于原图", d0d < 2.0, f"实际差 {d0d:.2f}/255")
+                check("风格强度 1 真的改变了画面", d1d > 25.0, f"实际差 {d1d:.2f}/255")
+                check("强度滑杆单调有效", d1d > d0d + 10.0,
+                      f"0 档 {d0d:.1f} → 1 档 {d1d:.1f}")
+            else:
+                check("风格套用渲染", False, "有一档没渲染出来")
+
+        # 换了风格之后，各政权还必须分得开 —— 这是「图还能不能读」的底线
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            import style_from_image as SFI
+            got = SFI.derive_palette(prof, ["#a89a5c", "#b0756a", "#8a9ab0"],
+                                     "#efe7d6", "light", 1.0)
+            rc = SFI.region_contrast([c for k, c in got["map"].items() if k != "#efe7d6"])
+            check("套风格后区域仍可分辨", rc >= 0.10, f"可区分度 {rc:.3f} < 0.10")
+        except Exception as e:
+            check("套风格后区域仍可分辨", False, f"{type(e).__name__}: {e}")
     else:
-        print("  SKIP  风格提取（没找到测试图，用 --style-image 指定）")
+        print("  SKIP  风格主线（没找到测试参考图，用 --style-image 指定）")
 
     # ── 4) 分镜与出片 ──
     # 这一段是新增能力的主战场：显式分镜、每帧文案、每帧停留、导出。
