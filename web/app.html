@@ -1007,6 +1007,9 @@ window.addEventListener('resize', fitCmp);
 async function renderOne(silent){
   const f = frame();
   if (!f) return showTip();
+  // 记住是**哪一帧**在渲染：回来时 cur 可能已经被点去别的帧了，
+  // 用那时的 cur 会把图贴到错误的行上（快速连点两帧就会看到）。
+  const idx = cur;
   if (!silent){ busy(true); setStat('渲染中…'); }
   $('#view').innerHTML = `<div class="tip"><div class="spin"></div>渲染中…</div>`;
   try {
@@ -1017,6 +1020,7 @@ async function renderOne(silent){
         one(null, renderBody({style_profile:null})),
         one(null, renderBody(styled)),
       ]);
+      if (idx !== cur) return;                 // 期间用户换帧了，这次结果作废
       $('#view').innerHTML = `<div class="cmp">
         <figure><div class="im"><img src="${esc(a.image)}?t=${Date.now()}" alt="原图"></div>
           <figcaption>题材自带配色</figcaption></figure>
@@ -1027,11 +1031,18 @@ async function renderOne(silent){
       if (!silent) setStat(`就绪 · 对比渲染 ${a.elapsed}s + ${b.elapsed}s`);
     } else {
       const j = await one(null, renderBody(styled));
+      if (idx !== cur) return;
       showPlate(j.image + '?t=' + Date.now());
+      // 单帧渲染也要回填分镜缩略图：不然点一帧能看到画面、但左边那一行的
+      // 缩略图始终是空框，看着像没做完（踩过）。
+      rendered[idx] = j.image;
+      if (!renderedHolds[idx]) renderedHolds[idx] = holdOf(cart[idx] || {});
+      drawSb(); drawFilm();
       if (!silent){ toast(`渲染完成 ${j.elapsed}s`); setStat(`就绪 · 单张 ${j.elapsed}s`); }
     }
   } catch(e){
-    $('#view').innerHTML = `<div class="tip"><b>出错了</b>${esc(e.message)}</div>`;
+    if (idx === cur)
+      $('#view').innerHTML = `<div class="tip"><b>出错了</b>${esc(e.message)}</div>`;
     if (!silent) setStat('渲染失败');
   } finally { if (!silent) busy(false); }
 }
