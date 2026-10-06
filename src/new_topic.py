@@ -48,6 +48,7 @@ import os
 import re
 import sys
 import unicodedata
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -538,6 +539,16 @@ DRAFT_PROMPT_3 = """接着上一步。这个主题属于中国历史朝代，请
 - 只做「谁控制哪一块」，不要编造战线、伤亡、人物。"""
 
 
+class ModelAuthError(SystemExit):
+    """模型鉴权失败（401/403）。
+
+    单独一个异常类型，是因为**调用方需要精确区分**「key 不对」和「别的错」：
+    早先服务端是在错误文本里找 "Key" 这个子串来判断，于是 401 落进了普通错误
+    分支，用户界面上只看到一句英文原文 "HTTP Error 401: Unauthorized"，
+    既不知道是自己的 key 错了，也不知道服务器其实有一个能用的 key。
+    """
+
+
 def _post_json(url: str, payload: dict, key: str, timeout: int = 180) -> dict:
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(),
@@ -545,6 +556,20 @@ def _post_json(url: str, payload: dict, key: str, timeout: int = 180) -> dict:
         method="POST")
     try:
         return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    except urllib.error.HTTPError as e:
+        # 把服务商返回的原文带上：401 也分「key 不存在」和「没余额」，
+        # 只有它的响应体能说清，不然只能靠猜。
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            pass
+        msg = f"模型调用失败：HTTP {e.code} {e.reason}"
+        if body:
+            msg += f" —— {body}"
+        if e.code in (401, 403):
+            raise ModelAuthError(msg)
+        raise SystemExit(msg)
     except Exception as e:
         raise SystemExit(f"模型调用失败：{type(e).__name__}: {e}")
 
@@ -563,7 +588,8 @@ def _chat(base: str, key: str, model: str, prompt: str) -> dict:
 
 
 def draft(ask: str, key: str = "", model: str = "Qwen/Qwen2.5-72B-Instruct",
-          verbose: bool = True, allow_env_key: bool = True) -> dict:
+          verbose: bool = True, allow_env_key: bool = True,
+          base: str = "") -> dict:
     """两阶段起草。
 
     为什么要两阶段：单元名必须和数据集里的**逐字一致**，而模型凭印象拼出来的
@@ -574,13 +600,17 @@ def draft(ask: str, key: str = "", model: str = "Qwen/Qwen2.5-72B-Instruct",
     allow_env_key：命令行用（自己的机器，读 .env 天经地义）；
     **服务端必须传 False** —— 否则任何访客的请求都会拿站长 .env 里的 key 去调模型，
     等于把 key 开放给所有人。
+
+    base：接口地址，必须能由调用方指定。界面上选了火山方舟/阿里百炼时，
+    它们的 key 只能打自己的域名；早先这个参数根本不存在、客户端选的 base URL
+    被丢掉，于是别家的 key 被发到硅基流动，**必然 401**。
     """
     key = key or os.environ.get("SILICONFLOW_API_KEY") or (
         _key_from_env_file() if allow_env_key else "")
     if not key:
         raise SystemExit("起草规格需要模型 Key：设 SILICONFLOW_API_KEY，或用 --key 传")
-    base = (os.environ.get("SILICONFLOW_BASE") or
-            "https://api.siliconflow.cn/v1").rstrip("/")
+    base = (base or os.environ.get("SILICONFLOW_BASE")
+            or "https://api.siliconflow.cn/v1").rstrip("/")
 
     if verbose:
         print("  第一半：定几何来源与年份…")

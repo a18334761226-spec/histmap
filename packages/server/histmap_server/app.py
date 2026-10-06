@@ -1044,10 +1044,92 @@ def _reload_topics():
         pass
 
 
+@app.post("/api/key/test")
+def api_key_test(request: Request,
+                 x_api_key: str | None = Header(None, alias="X-Api-Key"),
+                 x_base_url: str | None = Header(None, alias="X-Base-Url"),
+                 x_model: str | None = Header(None, alias="X-Model")):
+    """验一次「设置」里的 Key / 接口地址 / 模型到底能不能用。
+
+    为什么要专门做这个：key 填错时，用户是在**点了「让模型起草」之后**才看到
+    一句 "HTTP Error 401: Unauthorized"，既不知道是自己填的 key 被拒、
+    还是模型名不对、还是余额没了 —— 而且那一等就是一分多钟。
+    把它拆成两步（先只验鉴权，再验模型名），点一下就能定位。
+    """
+    import urllib.error
+    import urllib.request
+
+    host = (request.client.host if request.client else "") or ""
+    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    key = (x_api_key or "").strip()
+    src = "你填的 Key"
+    if not key:
+        if not is_local:
+            return {"ok": False, "step": "key",
+                    "detail": "公网访问必须自带 Key（服务端不会用站长的额度替你调模型）"}
+        try:
+            import new_topic as NT
+            key = (os.environ.get("SILICONFLOW_API_KEY")
+                   or NT._key_from_env_file() or "")
+        except Exception:
+            key = os.environ.get("SILICONFLOW_API_KEY") or ""
+        src = "服务端 .env 里的 Key"
+    if not key:
+        return {"ok": False, "step": "key",
+                "detail": "没有可用的 Key：既没填，服务端 .env 里也没有"}
+
+    base = (x_base_url or "").strip().rstrip("/") or "https://api.siliconflow.cn/v1"
+    model = (x_model or "").strip() or "Qwen/Qwen2.5-72B-Instruct"
+    out = {"ok": False, "key_source": src, "base": base, "model": model,
+           "key_tail": f"{key[:6]}…{key[-4:]}"}
+
+    def _call(url, payload=None, timeout=30):
+        r = urllib.request.Request(
+            url, data=json.dumps(payload).encode() if payload else None,
+            method="POST" if payload else "GET",
+            headers={"Authorization": f"Bearer {key}",
+                     "Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(r, timeout=timeout) as resp:
+                return resp.status, resp.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8", "replace")[:300]
+        except Exception as e:
+            return -1, f"{type(e).__name__}: {e}"
+
+    code, body = _call(f"{base}/models")
+    if code == -1:
+        out.update(step="network", detail=f"接口地址连不上：{body}")
+        return out
+    if code in (401, 403):
+        out.update(step="key", detail=f"{src}被拒绝（HTTP {code}）：{body}")
+        return out
+    if code != 200:
+        out.update(step="base", detail=f"{base}/models 返回 HTTP {code}：{body}")
+        return out
+
+    code, body = _call(f"{base}/chat/completions", {
+        "model": model,
+        "messages": [{"role": "user", "content": "只回两个字：收到"}],
+        "max_tokens": 16}, timeout=60)
+    if code == 200:
+        out.update(ok=True, step="done",
+                   detail=f"可用：{src}（{out['key_tail']}）+ 模型 {model}")
+        return out
+    if code == 404:
+        out.update(step="model",
+                   detail=f"Key 没问题，但这个接口上没有模型「{model}」——换一个模型名")
+        return out
+    out.update(step="model",
+               detail=f"发对话返回 HTTP {code}：{body}")
+    return out
+
+
 @app.post("/api/topic/draft")
 def api_topic_draft(req: TopicDraftReq, request: Request,
                     x_api_key: str | None = Header(None, alias="X-Api-Key"),
-                    x_base_url: str | None = Header(None, alias="X-Base-Url")):
+                    x_base_url: str | None = Header(None, alias="X-Base-Url"),
+                    x_model: str | None = Header(None, alias="X-Model")):
     """把一句话变成题材规格草案。
 
     只出草案不落盘 —— 用户要先看一眼模型打算怎么画，再决定要不要建。
@@ -1063,16 +1145,47 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
     host = (request.client.host if request.client else "") or ""
     is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
     allow_env = is_local or os.environ.get("HISTMAP_ALLOW_SERVER_KEY") == "1"
-    try:
-        spec = NT.draft(req.ask.strip(), key=x_api_key or "",
-                        model=req.model or "Qwen/Qwen2.5-72B-Instruct",
+
+    # 界面上选的模型和接口地址必须真的生效。早先这两个值只从请求体里读，
+    # 而前端是放在 X-Model / X-Base-Url 头里发的 —— 于是「设置」里
+    # 选的模型和 base URL 在起草这条路上**完全没生效**，用户看到一个
+    # 自己没选过的模型在跑，或者别家的 key 被发到硅基流动去撞 401。
+    model = req.model or x_model or "Qwen/Qwen2.5-72B-Instruct"
+    base = (x_base_url or "").strip()
+    client_key = (x_api_key or "").strip()
+
+    def _run(k: str, b: str):
+        return NT.draft(req.ask.strip(), key=k, model=model, base=b,
                         verbose=False, allow_env_key=allow_env)
+
+    used = "你填的 Key" if client_key else "本机 .env 里的 Key"
+    note = ""
+    try:
+        spec = _run(client_key, base)
+    except NT.ModelAuthError as e:
+        # 本机 + .env 里有能用的 key 时，别让一个填错的 key 把功能堵死 ——
+        # 这是「自己电脑上打开就能用」的承诺。但必须**说清换了哪个 key**，
+        # 否则用户会以为生效的是自己填的那个，之后换机器就莫名其妙失败。
+        env_key = ""
+        if allow_env and os.environ.get("HISTMAP_ALLOW_SERVER_KEY") != "0":
+            env_key = (os.environ.get("SILICONFLOW_API_KEY")
+                       or NT._key_from_env_file() or "")
+        if client_key and env_key and env_key != client_key:
+            # 回退必须**连 base URL 一起回退**：.env 里那个 key 是硅基流动的，
+            # 把它配到界面里残留的别家 base URL 上照样 401。
+            # 这里传空 base，走服务端自己的默认值。
+            try:
+                spec = _run(env_key, "")
+                used = "本机 .env 里的 Key"
+                note = ("你填的那个 Key 被服务商拒绝了（401/403），"
+                        "这次改用了服务端 .env 里的 Key 和它对应的接口地址。"
+                        "想一直用自己的，去「设置」里点『测试连接』看具体报错。")
+            except Exception as e2:
+                raise HTTPException(401, f"{e}\n（改用本机 .env 的 Key 也失败：{e2}）")
+        else:
+            raise HTTPException(401, str(e))
     except SystemExit as e:
-        msg = str(e)
-        if "Key" in msg:
-            msg = ("起草要模型 Key。你可以：①右上角「设置」里填一个（本机使用）；"
-                   "②或在本机的 .env 里写 SILICONFLOW_API_KEY=…（服务端会自动用）")
-        raise HTTPException(401 if "Key" in str(e) else 400, msg)
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"起草失败：{type(e).__name__}: {e}")
     # 顺带把「这份草案能不能真的建出来」预判一下，省得用户点了才发现对不上
@@ -1084,7 +1197,13 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
             warn.append("模型没给出数据源，无法取几何")
     if not (spec.get("control") or {}):
         warn.append("模型没给出归属表")
-    return {"spec": spec, "warnings": warn}
+    if note:
+        warn.insert(0, note)
+    return {"spec": spec, "warnings": warn, "model": model,
+            "base": (base or "https://api.siliconflow.cn/v1") if not note
+                    else (os.environ.get("SILICONFLOW_BASE")
+                          or "https://api.siliconflow.cn/v1"),
+            "used": used}
 
 
 @app.post("/api/topic/create")

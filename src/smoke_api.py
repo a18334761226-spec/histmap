@@ -24,16 +24,17 @@ import zipfile
 OK, BAD = [], []
 
 
-def call(base, path, method="GET", body=None, raw=None, ctype=None, timeout=600):
+def call(base, path, method="GET", body=None, raw=None, ctype=None, timeout=600,
+         headers=None):
     url = base.rstrip("/") + path
-    data, headers = None, {}
+    data, hdrs = None, dict(headers or {})
     if raw is not None:
         data = raw
-        headers["Content-Type"] = ctype or "application/octet-stream"
+        hdrs.setdefault("Content-Type", ctype or "application/octet-stream")
     elif body is not None:
         data = json.dumps(body).encode("utf-8")
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        hdrs.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             payload = r.read()
@@ -370,6 +371,28 @@ def main():
 
     st, r = call(B, "/api/chat", "POST", {"messages": [{"role": "user", "content": "hi"}], "state": st0})
     check("/api/chat 无 key 时给 401 而不是 500", st == 401, f"status={st} {str(r)[:100]}")
+
+    # ── 5b) Key / 接口地址 / 模型的预检 ──
+    # 这一路踩过的坑：界面上「让模型起草」直接甩一句
+    # "HTTP Error 401: Unauthorized"，用户不知道是 key、base URL 还是模型名不对，
+    # 而且那份错 key 还会把服务端 .env 里能用的 key 顶掉。
+    # 所以这三个分支必须常驻烟测：无 key、错 key、对 key。
+    st, r = call(B, "/api/key/test", "POST", {})
+    check("/api/key/test 有判断结果而不是 500",
+          st == 200 and isinstance(r, dict) and "ok" in r and "step" in r,
+          f"status={st} {str(r)[:140]}")
+
+    st, r = call(B, "/api/key/test", "POST", {},
+                 headers={"X-Api-Key": "sk-definitely-a-wrong-key-0000000000000000"})
+    check("/api/key/test 错 key 时把问题指到 key 这一项",
+          st == 200 and isinstance(r, dict) and r.get("ok") is False
+          and r.get("step") == "key",
+          f"status={st} {str(r)[:140]}")
+
+    if key:
+        st, r = call(B, "/api/key/test", "POST", {}, headers={"X-Api-Key": key})
+        check("/api/key/test 对 key 时报可用", st == 200 and r.get("ok") is True,
+              f"status={st} {str(r)[:160]}")
 
     if not key:
         print("  SKIP  对话真实调用（没找到 .env 里的 key）")

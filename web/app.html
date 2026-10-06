@@ -319,6 +319,10 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
 .note{font-size:11px;line-height:1.65;color:var(--text-2);background:var(--bg);
   border-left:2px solid var(--accent);border-radius:0 var(--r-s) var(--r-s) 0;
   padding:9px 11px;margin-top:14px}
+/* 测试连接的结果是多行诊断（哪一项不对 + 用的是哪个 key），必须保留换行，
+   否则会挤成一长条看不清。 */
+#sTestOut{white-space:pre-line}
+#sTestOut:empty{display:none}
 #toast{position:fixed;bottom:68px;left:50%;transform:translate(-50%,10px);
   background:var(--raise);border:1px solid var(--line-2);color:var(--text);
   padding:9px 15px;border-radius:var(--r-m);font-size:12.5px;box-shadow:var(--sh-2);
@@ -554,9 +558,11 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
 
     <div class="note" id="sNote"></div>
     <div class="acts">
+      <button class="btn gh" id="sTest">测试连接</button>
       <button class="btn gh" id="sClear">清空</button>
       <button class="btn pri" id="sSave">保存</button>
     </div>
+    <div class="note" id="sTestOut"></div>
   </div>
 </div>
 
@@ -1405,9 +1411,31 @@ $('#sSave').onclick = () => {
   localStorage.setItem('histmap.cfg', JSON.stringify(nx)); Object.assign(cfg, nx);
   $('#mask').classList.remove('on'); loadCfg();
   toast(nx.chat ? `已保存：${nx.chat}` : '已保存'); };
+/* 测试连接：把「点了起草才看到 401、还要等一分多钟」提前成一次点击。
+   分两步验（先只验鉴权、再验模型名），报错能指到具体是哪一项不对。 */
+$('#sTest').onclick = async () => {
+  const out = $('#sTestOut'), b = $('#sTest');
+  b.disabled = true; out.textContent = '正在验证…';
+  try {
+    const r = await fetch('/api/key/test', {method:'POST', headers:{
+      'X-Api-Key': $('#sKey').value.trim(),
+      'X-Base-Url': $('#sBase').value.trim(),
+      'X-Model': pickedModel()}});
+    const j = await r.json();
+    const where = {key:'Key', network:'接口地址', base:'接口地址', model:'模型'}[j.step];
+    out.textContent = (j.ok ? '✓ ' : '✗ ') + (j.detail || j.step || '未知错误')
+      + (j.key_source ? `\n（用的 ${j.key_source}${j.key_tail ? ' · ' + j.key_tail : ''}）` : '');
+    out.style.color = j.ok ? 'var(--ok,#6ee7a8)' : 'var(--bad,#f88)';
+    if (!j.ok && where) out.textContent += `\n问题出在：${where}`;
+  } catch(e) {
+    out.textContent = '✗ 连不上后端：' + e;
+    out.style.color = 'var(--bad,#f88)';
+  } finally { b.disabled = false; }
+};
 $('#sClear').onclick = () => {
   localStorage.removeItem('histmap.cfg');
-  ['base','key','chat'].forEach(k => delete cfg[k]); loadCfg(); toast('已清空'); };
+  ['base','key','chat'].forEach(k => delete cfg[k]); loadCfg();
+  $('#sTestOut').textContent = ''; toast('已清空'); };
 $('#btnSet').onclick = () => $('#mask').classList.add('on');
 $('#mask').onclick = e => { if (e.target.id === 'mask') $('#mask').classList.remove('on'); };
 
@@ -1478,9 +1506,16 @@ $('#newMask').onclick = e => { if (e.target.id === 'newMask') $('#newMask').clas
 $('#nwGo').onclick = async () => {
   const ask = $('#nwAsk').value.trim();
   if (!ask){ toast('先说一句你想要什么'); return; }
-  if (!cfg.key){ toast('起草要模型 Key —— 右上角设置里填一个'); return; }
+  // 这里**不能**因为「设置里没填 key」就直接拦住：本机打开时服务端会用自己
+  // .env 里的 key，那正是「开箱可用」的承诺。早先这里写了 if(!cfg.key) return，
+  // 于是没填 key 的人根本走不到那一步，只能在设置里瞎填一个 —— 然后 401。
+  // 有没有 key、能不能用，交给服务端判断，报错也会说得更准。
   $('#nwGo').disabled = true;
-  $('#nwStat').textContent = '模型在挑数据源、分配归属…（约 10–40 秒）';
+  // 实测：两阶段起草 + 拉真实行政区名，DeepSeek V4 Flash 约 130 秒、
+  // Qwen2.5-72B 约 90 秒。早先这里写「约 10–40 秒」，用户等到 40 秒
+  // 就会以为卡死了 —— 宁可先说大一点。
+  $('#nwStat').textContent = '模型在挑数据源、分配归属…（要拉真实行政区名，'
+    + '通常 1–2 分钟，别关页面）';
   try {
     const r = await api('/api/topic/draft', {method:'POST', body: JSON.stringify({ask})});
     const j = await r.json();
@@ -1490,9 +1525,11 @@ $('#nwGo').onclick = async () => {
     const w = j.warnings || [];
     $('#nwWarn').style.display = w.length ? 'block' : 'none';
     $('#nwWarn').innerHTML = w.map(esc).join('<br>');
-    $('#nwStat').textContent = '草案就绪 —— 看一眼再建';
+    $('#nwStat').textContent =
+      `草案就绪（${j.model || cfg.chat || '默认模型'} · ${j.used || ''}） —— 看一眼再建`;
   } catch(e){
-    $('#nwStat').textContent = '';
+    $('#nwStat').textContent = '起草没成功。去「设置 → 测试连接」能定位是 Key、'
+      + '接口地址还是模型的问题。';
     toast(e.message);
   } finally { $('#nwGo').disabled = false; }
 };
