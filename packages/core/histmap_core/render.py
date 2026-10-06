@@ -366,9 +366,8 @@ class Renderer:
         st = self.style
         if items is None:
             items = [(r.name, st.color_for(r, i))
-                     for i, r in enumerate(frame.regions)][:st.legend_max_items]
-        else:
-            items = list(items)[:st.legend_max_items]
+                     for i, r in enumerate(frame.regions)]
+        items = list(items)
         if not items:
             return
         f = self.font(st.legend_size * self.ss)
@@ -376,9 +375,34 @@ class Renderer:
         sw = 22 * self.ss
         line_h = (st.legend_size * 1.75) * self.ss
         head_h = line_h if title else 0
-        box_w = pad * 2 + sw + 8 * self.ss + max(
-            self._text_size(draw, t, f)[0] for _, t in items)
-        box_h = pad * 2 + line_h * len(items) + head_h
+        text_w = max(self._text_size(draw, t, f)[0] for _, t in items)
+        row_w = pad * 2 + sw + 8 * self.ss + text_w
+
+        # 图例要**放得下，或者明说放不下**。早先是直接 [:max_items] 截断 ——
+        # 唐 807 有 37 个藩镇、上限 12，于是 25 个颜色在图上没有解释：
+        # 图例看着还在，其实已经在骗人。现在改成：先按可用高度算单栏容量，
+        # 再按可用宽度算最多几栏，两者相乘就是**能画下的上限**；
+        # 超出就留一格写「等 N 个」，绝不静默丢。
+        avail_h = (H * (1 - self.layout.title_ratio - self.layout.footer_ratio)
+                   - self.layout.margin * self.ss * 2)
+        per_col = max(1, int((avail_h - pad * 2 - head_h) // line_h))
+        max_cols = max(1, int((W * 0.40) // max(1, row_w)))
+        capacity = per_col * max_cols
+        # legend_max_items 现在只是**作者可选的硬上限**，而且一旦生效就必须
+        # 画出「等 N 个」那一格。默认值(14)低于地理容量时不再生效 ——
+        # 否则又回到了「默认配置静默截断」的老问题。
+        cap = int(getattr(st, "legend_max_items", 0) or 0)
+        if cap > 0:
+            capacity = min(capacity, max(2, cap))
+        dropped = 0
+        if len(items) > capacity:
+            keep = max(1, capacity - 1)
+            dropped = len(items) - keep
+            items = items[:keep] + [(f"等 {dropped} 个", None)]
+        ncol = max(1, -(-len(items) // per_col))
+        rows = -(-len(items) // ncol)
+        box_w = row_w * ncol
+        box_h = pad * 2 + line_h * rows + head_h
 
         pos = st.legend_position or "bottom-left"
         m = self.layout.margin * self.ss
@@ -401,11 +425,21 @@ class Renderer:
                       fill=_hex_to_rgb(st.ink if st.theme == "light" else "#e2e8f0"),
                       anchor="lm")
         for i, (name, color) in enumerate(items):
-            cy = y0 + pad + head_h + line_h * i + line_h / 2
-            draw.rectangle([x0 + pad, cy - sw / 3, x0 + pad + sw, cy + sw / 3],
-                           fill=_hex_to_rgb(color))
-            draw.text((x0 + pad + sw + 8 * self.ss, cy), name, font=f,
+            col, row = divmod(i, rows)
+            cx0 = x0 + pad + col * row_w
+            cy = y0 + pad + head_h + line_h * row + line_h / 2
+            if color:
+                draw.rectangle([cx0, cy - sw / 3, cx0 + sw, cy + sw / 3],
+                               fill=_hex_to_rgb(color))
+            else:
+                # 「等 N 个」那格不画色块，改画三条短横线示意「还有更多」
+                for k in range(3):
+                    yy = cy - sw / 4 + k * sw / 4
+                    draw.line([cx0 + 2 * self.ss, yy, cx0 + sw - 2 * self.ss, yy],
+                              fill=_hex_to_rgb(st.muted or st.ink), width=self.ss)
+            draw.text((cx0 + sw + 8 * self.ss, cy), name, font=f,
                       fill=_hex_to_rgb(st.ink), anchor="lm")
+        return dropped
 
     # ── 批量 ─────────────────────────────────────────────────
     def render_series(self, series: Series, out_dir: str,

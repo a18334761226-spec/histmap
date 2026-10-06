@@ -277,6 +277,29 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
             f"（以控制表为准）")
     years = [y for y in want_years if y in have_years] or have_years
 
+    # 反方向也要报：控制表里多出来的年份。早先只查了一个方向，结果法国大革命
+    # 的控制表里留着一个 1793 —— 题材不声明它，所以永远不渲染，成了死数据，
+    # 自查时报「控制表年份与题材 years 不一致」我才发现。
+    extra = sorted(set(have_years) - set(want_years))
+    if want_years and extra:
+        report["warnings"].append(
+            f"控制表里还有 {extra} 这些年份，题材没声明 —— 要么加进 years 去渲染，"
+            f"要么从控制表删掉")
+
+    # 相邻年份的控制状态完全相同 = 这一帧和上一帧长得一模一样，白占一帧。
+    # 短视频里这是明显的浪费，而且说明这段史料没抓到变化。
+    def _sig(y):
+        v = ctrl_data.get(str(y))
+        if not isinstance(v, dict):
+            return None
+        return tuple(sorted((o, tuple(sorted(u)) if isinstance(u, list) else u)
+                            for o, u in v.items()))
+    dups = [f"{a}={b}" for a, b in zip(years, years[1:])
+            if _sig(a) is not None and _sig(a) == _sig(b)]
+    if dups:
+        report["warnings"].append(
+            f"这些相邻年份的控制状态完全一样，画出来是重复帧：{'、'.join(dups)}")
+
     # ── 3) 注册进 topics.json ──
     entry = {
         "id": tid, "title": spec.get("title") or tid,

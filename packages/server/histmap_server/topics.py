@@ -167,10 +167,23 @@ def _dynasty_dates(data: dict) -> list[str]:
     return [f"{y}-01-01" for y in sorted(ys)]
 
 
-@lru_cache(maxsize=1)
+_topics_cache: dict = {}
+
+
 def load_topics() -> dict[str, Topic]:
-    if not os.path.exists(TOPICS_FILE):
+    """题材定义。**认文件时间**：topics.json 被改过就重读。
+
+    早先是 lru_cache(maxsize=1)，只有「在线新建题材」那条路会主动清它。
+    于是 `fit_bbox --write` 改了 bbox、或者直接编辑 topics.json，
+    跑着的服务端一律看不到 —— 取景框明明修好了，画面还是旧的。
+    """
+    try:
+        mt = os.path.getmtime(TOPICS_FILE)
+    except OSError:
         return {}
+    hit = _topics_cache.get("v")
+    if hit is not None and hit[0] == mt:
+        return hit[1]
     data = json.load(open(TOPICS_FILE, encoding="utf-8"))
     out = {}
     for t in data.get("topics", []):
@@ -178,6 +191,7 @@ def load_topics() -> dict[str, Topic]:
             id=t["id"], title=t["title"], kind=t.get("kind", "boundary"),
             bbox=t.get("bbox") or [-180, -60, 180, 75],
             themes=t.get("themes") or ["dark", "light"], raw=t)
+    _topics_cache["v"] = (mt, out)
     return out
 
 
@@ -368,7 +382,7 @@ def _topic_style(topic: Topic, theme: str) -> "Style":
             "title_style": {"size": 50, "color": "#241f1a",
                             "subtitle_size": 24, "subtitle_color": "#6b5f50"},
             "legend": {"enabled": True, "position": "bottom-left",
-                       "size": 16, "max_items": 16}})
+                       "size": 16}})
     return Style.from_dict({
         "id": f"{topic.id}_dark",
         "canvas": {"background": "#0b1016"},
@@ -378,7 +392,7 @@ def _topic_style(topic: Topic, theme: str) -> "Style":
         "title_style": {"size": 54, "color": "#ffffff",
                         "subtitle_size": 26, "subtitle_color": "#b8c2cc"},
         "legend": {"enabled": True, "position": "bottom-left",
-                   "size": 17, "max_items": 16}})
+                   "size": 17}})
 
 
 def _topic_legend(topic: Topic, theme: str):
@@ -432,17 +446,35 @@ def _draw_overlays(img, renderer, tl, d, style, W, H, topic: Topic,
 
 
 # ── dynasty 类 ──────────────────────────────────────────────
+# 这两个缓存都必须**认文件时间**，不能只认键。
+# 踩过的坑：缓存只按 (题材, 年份) 存，于是 `build_dynasty_map.py --force`
+# 重建了几何、控制表也改了，服务端还在返回上一次读进来的旧数据 ——
+# 界面和渲染结果一切正常，只是全是旧的，没有任何迹象。
+# 这类「改了没生效」最耗人：花了半天去查渲染代码，问题其实在缓存。
 _dyn_cache: dict = {}
 _ctrl_cache: dict = {}
 
 
+def _cached_json(path: str, cache: dict, key):
+    """带 mtime 校验的 JSON 缓存：文件变了就重读。"""
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        mt = None
+    hit = cache.get(key)
+    if hit is not None and hit[0] == mt:
+        return hit[1]
+    obj = json.load(open(path, encoding="utf-8")) if mt is not None else {}
+    cache[key] = (mt, obj)
+    return obj
+
+
 def _topic_json(topic: Topic) -> dict:
     """题材的控制表原文（带缓存）。朝代名、显示名、口径声明都从这儿读。"""
-    key = topic.id
-    if key not in _ctrl_cache:
-        p = topic.control_path()
-        _ctrl_cache[key] = json.load(open(p, encoding="utf-8")) if p else {}
-    return _ctrl_cache[key]
+    p = topic.control_path()
+    if not p:
+        return {}
+    return _cached_json(p, _ctrl_cache, topic.id)
 
 
 def _file_sha1(path: str) -> str:
@@ -569,17 +601,12 @@ def stale_report() -> list[dict]:
 
 
 def _dynasty_geometry(topic: Topic, year: int) -> dict:
-    key = (topic.id, year)
-    if key in _dyn_cache:
-        return _dyn_cache[key]
     p = os.path.join(PROC, f"{topic.id}_{year}_map.geojson")
     if not os.path.exists(p):
         raise FileNotFoundError(
             f"缺少 {topic.id} {year} 年的几何。先跑：\n"
             f"  python src/build_dynasty_map.py --topic {topic.id} --year {year}")
-    gj = json.load(open(p, encoding="utf-8"))
-    _dyn_cache[key] = gj
-    return gj
+    return _cached_json(p, _dyn_cache, (topic.id, year))
 
 
 def rings_of(geom: dict) -> list:
@@ -685,7 +712,7 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
         "title_style": {"size": 50, "color": "#241f1a",
                         "subtitle_size": 24, "subtitle_color": "#6b5f50"},
         "legend": {"enabled": True, "position": "bottom-left",
-                   "size": 16, "max_items": 12}})
+                   "size": 16}})
     lay = Layout(width=W, height=H, mode=mode, title_ratio=0.11, footer_ratio=0.07)
     prof = None
     if style_profile:

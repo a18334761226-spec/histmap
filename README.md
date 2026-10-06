@@ -24,6 +24,7 @@
 | **美国内战** 1861–1865 | geoBoundaries USA 州界 + 阵营归属表 | 5 |
 | **德意志统一战争** 1864–1871 | geoBoundaries DEU/AUT/FRA/DNK（全自动生成） | 3 |
 | **印巴分治** 1947–1970 | geoBoundaries IND/PAK（全自动生成） | 4 |
+| **法国大革命** 1789–1799 | geoBoundaries FRA/DEU/AUT/BEL/NLD（全自动生成） | 4 |
 
 **加一个新题材不再是手工活。** 一条管线把「一句话」变成题材：
 

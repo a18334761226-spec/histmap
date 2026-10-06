@@ -1030,13 +1030,16 @@ class TopicCreateReq(BaseModel):
 
 
 def _reload_topics():
-    """新建题材后必须清缓存，否则界面要重启服务才看得到新题材。
+    """新建/改动题材后清各种缓存。
 
-    topics.load_topics() 是 lru_cache 的，不清就等于新建了个看不见的题材。
+    现在这几个缓存都自己认文件 mtime（见 topics._cached_json / load_topics），
+    所以正常路径不需要手动清；这里保留一次强制清空，是为了「刚写完文件、
+    文件系统时间戳精度不够」的边界情况不会让新题材看不见。
     """
     try:
-        topics.load_topics.cache_clear()
+        topics._topics_cache.clear()
         topics._ctrl_cache.clear()
+        topics._dyn_cache.clear()
     except Exception:
         pass
 

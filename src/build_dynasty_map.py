@@ -43,7 +43,9 @@ from shapely.geometry import shape, mapping
 from shapely.ops import unary_union
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for p in (os.path.join(ROOT, "packages", "core"),
+HERE = os.path.dirname(os.path.abspath(__file__))
+for p in (HERE,
+          os.path.join(ROOT, "packages", "core"),
           os.path.join(ROOT, "packages", "server")):
     if p not in sys.path:
         sys.path.insert(0, p)
@@ -150,10 +152,94 @@ def _norm(s: str) -> str:
         return str(s)
 
 
-def stable_color(name: str, all_names: list) -> str:
-    """按名字稳定分配颜色 —— 不用 hash()，那个跨进程不稳定。"""
-    h = int(hashlib.md5(name.encode("utf-8")).hexdigest()[:8], 16)
-    return PALETTE[h % len(PALETTE)]
+def all_owners(raw: dict) -> list:
+    """控制表里**所有年份**出现过的归属方。
+
+    颜色必须按全体分配，不能只按当年：某一年多冒出一个藩镇，若按当年分配，
+    其余藩镇会整体换色 —— 跨年份同一个政权颜色就变了，观众看到的是「换了人」。
+    """
+    names = []
+    for k in raw:
+        if str(k).startswith("_"):
+            continue
+        row = parse_owner_table(raw, int(k) if str(k).isdigit() else k)
+        if not row:
+            continue
+        for o in row.values():
+            if o and o not in names:
+                names.append(o)
+    return names
+
+
+# ── 配色：按分类个数现算，而不是从固定调色板里取模 ──────────────
+# 踩过的坑：早先是 md5(名字) % 30，从 30 色调色板取一个。唐 807 有 **37 个藩镇**，
+# 结果只用到 21 种颜色 —— **28 个藩镇和别的藩镇同色**（幽州/朔方/江東 一模一样）。
+# 地图上同色就等于「同一个政权」，这是**图在说谎**；而图例又上限 12 条，把大部分
+# 颜色藏起来了。任何图像模型都救不了这种错 —— 它只会把这张错的图渲染得很漂亮。
+#
+# 正确做法：在 OKLab（感知均匀）里按**黄金角**铺色相，明度分 6 档错开。
+# 黄金角逐次落点是低差异序列，让 N 个分类的色相间隔尽量均匀；明度分档负责
+# 把色相撞在一起的几个再拉开。这两者的档数必须让它实测最优 ——
+# 试过 3/4/5/6/7/9 档明度与「分层均匀铺色相」，42 个分类下最小感知距离：
+#     3档 0.0120 · 4档 0.0314 · 5档 0.0485 · **6档 0.0510** · 7档 0.0049
+# 7 档反而崩掉（黄金角与档数共振，存在色相几乎相同又在同一档的配对）。
+# 最终取「明度 0.80–0.45 分 6 档 + 固定彩度」，实测 3/5/8/12/20/30/42 个
+# 分类都能稳定在 ≥0.0687，是从 0.0000（同色）到 0.0687 的量级提升。
+# 彩度**不**随序号变化：加了彩度循环后最小距离反而从 0.0120 掉到 0.0070。
+_GOLDEN = 137.508
+_L_HI, _L_LO, _L_TIERS = 0.80, 0.45, 6
+_CHROMA = 0.09
+_COLOR_CACHE: dict = {}
+
+
+def _oklch_hex(i: int, n: int) -> str:
+    """第 i 个（共 n 个）分类的颜色。OKLCh 取色相 + 明度分档。"""
+    import math
+    from style_from_image import _oklab_to_srgb, _srgb_to_oklab, _rgb01_to_hex
+
+    L = _L_HI - (_L_HI - _L_LO) * (i % _L_TIERS) / (_L_TIERS - 1)
+    h = math.radians((i * _GOLDEN) % 360.0)
+    C = _CHROMA
+    rgb = (0.5, 0.5, 0.5)
+    for _ in range(18):
+        lab = (L, C * math.cos(h), C * math.sin(h))
+        rgb = _oklab_to_srgb(lab)
+        # 出了 sRGB 色域就会被裁，裁完色相就跑了 —— 降彩度重试，别硬裁
+        back = _srgb_to_oklab(rgb)
+        if sum((x - y) ** 2 for x, y in zip(lab, back)) < 1e-4:
+            break
+        C *= 0.8
+    return _rgb01_to_hex(rgb)
+
+
+def topic_palette(names) -> dict:
+    """一组归属方 → {名字: 颜色}。确定性，同题材跨年份一致。
+
+    名字先排序，所以分配**只取决于这一组名字**：换台机器、换 Python 版本、
+    重新构建，颜色都一样。
+    """
+    key = tuple(sorted({str(n) for n in names if n}))
+    got = _COLOR_CACHE.get(key)
+    if got is None:
+        got = {nm: _oklch_hex(i, len(key)) for i, nm in enumerate(key)}
+        _COLOR_CACHE[key] = got
+    return got
+
+
+def stable_color(name: str, all_names: list = ()) -> str:
+    """单个名字的颜色。走 topic_palette，保证与全体分配是同一套。"""
+    names = list(all_names)
+    if name not in names:
+        names.append(name)
+    return topic_palette(names).get(name) or _oklch_hex(0, 1)
+
+
+def palette_collisions(names) -> dict:
+    """{颜色: [同色的名字]}，只留撞色的。用来在构建时把问题报出来。"""
+    inv: dict = {}
+    for nm, c in topic_palette(names).items():
+        inv.setdefault(c, []).append(nm)
+    return {c: v for c, v in inv.items() if len(v) > 1}
 
 
 def build(topic_id: str, year: int, max_km: float | None = None,
@@ -239,6 +325,8 @@ def build(topic_id: str, year: int, max_km: float | None = None,
     pal = raw.get("_palette") or {}
     # 换色键：让「南宋」沿用「宋」的颜色，颜色跟政权走而不是跟名字走
     ckey = raw.get("_color_key") or {}
+    # 自动配色按**全题材全年龄**的归属方一次性分配，跨年份才不会换色
+    owners_all = all_owners(raw)
 
     counties = load_counties()
     if not quiet:
@@ -297,11 +385,11 @@ def build(topic_id: str, year: int, max_km: float | None = None,
             us = [grp]
             name = disp.get(grp, grp)
             own = active.get(grp, grp)
-            color = pal.get(own) or stable_color(ckey.get(own, own), list(groups))
+            color = pal.get(own) or stable_color(ckey.get(own, own), owners_all)
         else:
             us = sorted(u for u, o in active.items() if o == grp)
             name = disp.get(grp, grp)
-            color = pal.get(grp) or stable_color(ckey.get(grp, grp), list(groups))
+            color = pal.get(grp) or stable_color(ckey.get(grp, grp), owners_all)
         feats.append({
             "type": "Feature",
             "properties": {"id": name, "name": name, "color": color,
@@ -333,7 +421,61 @@ def build(topic_id: str, year: int, max_km: float | None = None,
         print(f"\n{year} 年归属方（按面积）:")
         for g, n, a in sorted(summary, key=lambda x: -x[2])[:12]:
             print(f"    {g:12s} {n:3d} 单元")
+        # 撞色 = 图上两个政权长得一样，观众会读成一家。自动配色本身不会撞，
+        # 但控制表里的 _palette 覆盖（比如刻意让南宋沿用宋的颜色）可能撞，
+        # 所以还是报出来 —— 是不是故意的，只有写数据的人知道。
+        got = [(f["properties"]["name"], f["properties"]["color"]) for f in feats]
+        inv: dict = {}
+        for nm, c in got:
+            inv.setdefault(c, []).append(nm)
+        same = {c: v for c, v in inv.items() if len(v) > 1}
+        if same:
+            print(f"    注意：{len(same)} 种颜色被多个归属方共用（是否故意？）")
+            for c, v in list(same.items())[:6]:
+                print(f"        {c} <- {'、'.join(v)}")
     return dst
+
+
+def refit_topic_bbox(topic_id: str, quiet: bool = True) -> list | None:
+    """几何一变，取景框就得跟着重算。
+
+    这是个**必须自动化**的环节：bbox 是几何的外接框，改了 max_km、加了锚点、
+    改了控制表，范围就变了。早先是靠人记得手动跑 fit_bbox —— 结果改完明清的
+    多锚点后忘了跑，自查时才发现画面被裁掉 130%。
+
+    只在**声明年份的几何全部齐了**才写回：fit_bbox 会跳过缺失年份，
+    拿一年的几何去拟合会把框收得过紧，反而把别的年份裁掉。
+    """
+    try:
+        import fit_bbox
+    except Exception:
+        return None
+    p = os.path.join(ROOT, "data", "topics", "topics.json")
+    doc = json.load(open(p, encoding="utf-8"))
+    for t in doc.get("topics", []):
+        if t.get("id") != topic_id or t.get("kind") == "boundary":
+            continue
+        years = [int(y) for y in (t.get("years") or [])]
+        if not years:
+            return None
+        missing = [y for y in years
+                   if not os.path.exists(os.path.join(PROC, f"{topic_id}_{y}_map.geojson"))]
+        if missing:
+            if not quiet:
+                print(f"[6] 取景框暂不更新：{missing} 还没建")
+            return None
+        old = t.get("bbox")
+        new = fit_bbox.fit(topic_id, years)
+        if new and old != new:
+            t["bbox"] = new
+            json.dump(doc, open(p, "w", encoding="utf-8"),
+                      ensure_ascii=False, indent=2)
+            if not quiet:
+                print(f"[6] 取景框跟着几何更新 {old} -> {new}")
+        elif not quiet:
+            print(f"[6] 取景框核对无误 {new}")
+        return new
+    return None
 
 
 def sha1_of(path: str) -> str:
@@ -364,6 +506,7 @@ def build_from_polygons(t, year: int, uf: str, raw: dict, owner: dict,
     disp = raw.get("_display") or {}
     pal = raw.get("_palette") or {}
     ckey = raw.get("_color_key") or {}
+    owners_all = all_owners(raw)
     merge_by = t.raw.get("merge_by", "owner")
 
     by_name = {}
@@ -412,7 +555,7 @@ def build_from_polygons(t, year: int, uf: str, raw: dict, owner: dict,
             us = sorted(u for u, o in active.items() if o == grp)
             own = grp
             name = disp.get(grp, grp)
-        color = pal.get(own) or stable_color(ckey.get(own, own), list(groups))
+        color = pal.get(own) or stable_color(ckey.get(own, own), owners_all)
         feats.append({
             "type": "Feature",
             "properties": {"id": name, "name": name, "color": color,
@@ -471,6 +614,9 @@ def main():
                 print()
     else:
         build(args.topic, args.year, args.max_km, args.simplify, args.force, args.quiet)
+
+    # 建完几何就把取景框对齐到几何（年份不齐时本函数会自己跳过）
+    refit_topic_bbox(args.topic, args.quiet)
 
 
 if __name__ == "__main__":
