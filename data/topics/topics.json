@@ -11,6 +11,35 @@
   },
   "topics": [
     {
+      "id": "mingqing",
+      "title": "明清",
+      "subtitle": "明代两京十三司 → 清代行省 · 颜色为所属政权",
+      "kind": "dynasty",
+      "bbox": [
+        73.0,
+        17.0,
+        135.0,
+        54.0
+      ],
+      "years": [
+        1400,
+        1550,
+        1644,
+        1700,
+        1820
+      ],
+      "units": "mingqing_province_gazetteer.json",
+      "control": "mingqing_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1644-01-01",
+      "default_size": "16x9",
+      "merge_by": "owner",
+      "source_note": "数据源：《明史·地理志》《清史稿·地理志》省级建置 + 本项目重建的省治坐标 + geoBoundaries 现代县界。**省级示意，几何是重建的，非史料记载的实际界线**；边疆按通行分期简化。",
+      "license_note": "《明史》《清史稿》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）"
+    },
+    {
       "id": "ww2-europe",
       "title": "二战欧洲",
       "subtitle": "1939–1945 · 实际控制格局",
@@ -120,6 +149,90 @@
       "source_note": "数据源：《宋史·地理志》路制沿革 + 本项目重建的路治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
       "license_note": "《宋史》为公有领域；geoBoundaries CHN 为 PDDL",
       "merge_by": "unit"
+    },
+    {
+      "id": "us-civil-war",
+      "title": "美国内战",
+      "subtitle": "南北阵营 · 颜色为所属阵营",
+      "kind": "dynasty",
+      "bbox": [
+        -126,
+        24,
+        -66,
+        50
+      ],
+      "years": [
+        1861,
+        1862,
+        1863,
+        1864,
+        1865
+      ],
+      "units_file": "us-civil-war_units.geojson",
+      "control": "us-civil-war_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1863-01-01",
+      "default_size": "16x9",
+      "merge_by": "owner",
+      "source_note": "数据源：geoBoundaries USA ADM1 州界（CC BY 4.0）+ 本项目校订的阵营归属表。**用的是现代州界，不是 1861 年的州界**；西弗吉尼亚 1863 年从弗吉尼亚分出、内华达 1864 年建州按史实处理。本图表达「谁控制哪一块」，不是当年的精确州界。",
+      "license_note": "geoBoundaries USA 为 CC BY 4.0（须署名 geoBoundaries / Wikimedia）"
+    },
+    {
+      "id": "deu-unification",
+      "title": "德意志统一战争",
+      "subtitle": "普鲁士如何一步步统一德国",
+      "kind": "dynasty",
+      "bbox": [
+        5.866,
+        47.27,
+        15.042,
+        55.05
+      ],
+      "years": [
+        1864,
+        1866,
+        1871
+      ],
+      "units_file": "deu-unification_units.geojson",
+      "control": "deu-unification_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1864-01-01",
+      "default_size": "16x9",
+      "merge_by": "owner",
+      "source_note": "本地图使用的是现代行政界线，而非1864-1871年间的实际界线。",
+      "license_note": "geoBoundaries DEU 为 CC BY 4.0（须署名）；geoBoundaries AUT 为 CC BY 4.0（须署名）；geoBoundaries FRA 为 CC BY 4.0（须署名）；geoBoundaries DNK 为 CC BY 4.0（须署名）"
+    },
+    {
+      "id": "india-pakistan-partition",
+      "title": "印巴分治",
+      "subtitle": "1947年印度和巴基斯坦的分治",
+      "kind": "dynasty",
+      "bbox": [
+        68.1162,
+        6.7535,
+        97.4025,
+        35.6747
+      ],
+      "years": [
+        1947,
+        1950,
+        1960,
+        1970
+      ],
+      "units_file": "india-pakistan-partition_units.geojson",
+      "control": "india-pakistan-partition_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1947-01-01",
+      "default_size": "16x9",
+      "merge_by": "owner",
+      "source_note": "本地图使用的是现代行政界线，而非1947年时的实际界线。",
+      "license_note": "geoBoundaries IND 为 CC BY 4.0（须署名）；geoBoundaries PAK 为 CC BY 4.0（须署名）"
     }
   ]
 }

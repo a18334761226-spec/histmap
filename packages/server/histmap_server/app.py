@@ -976,7 +976,92 @@ def strip_fence(t: str) -> str:
 
 
 # ════════════════════════════════════════════════════════════
-# 5) 静态资源
+# 6) 新建题材：让用户自己加，而不是改代码
+# ════════════════════════════════════════════════════════════
+class TopicDraftReq(BaseModel):
+    ask: str
+    model: str | None = None
+
+
+class TopicCreateReq(BaseModel):
+    spec: dict
+    install: bool = True
+
+
+def _reload_topics():
+    """新建题材后必须清缓存，否则界面要重启服务才看得到新题材。
+
+    topics.load_topics() 是 lru_cache 的，不清就等于新建了个看不见的题材。
+    """
+    try:
+        topics.load_topics.cache_clear()
+        topics._ctrl_cache.clear()
+    except Exception:
+        pass
+
+
+@app.post("/api/topic/draft")
+def api_topic_draft(req: TopicDraftReq,
+                    x_api_key: str | None = Header(None, alias="X-Api-Key"),
+                    x_base_url: str | None = Header(None, alias="X-Base-Url")):
+    """把一句话变成题材规格草案。
+
+    只出草案不落盘 —— 用户要先看一眼模型打算怎么画，再决定要不要建。
+    需要 Key：这一步是唯一用到模型的地方（选数据源、分配归属）。
+    """
+    import new_topic as NT
+    if not req.ask.strip():
+        raise HTTPException(400, "说一句你想要什么题材")
+    # 服务端**不**回退去读本站 .env 的 key。否则任何访客的请求都在烧站长的额度，
+    # 而界面上还写着「未填 Key」—— 那是骗人的。想开放就显式设这个环境变量。
+    allow_env = os.environ.get("HISTMAP_ALLOW_SERVER_KEY") == "1"
+    try:
+        spec = NT.draft(req.ask.strip(), key=x_api_key or "",
+                        model=req.model or "Qwen/Qwen2.5-72B-Instruct",
+                        verbose=False, allow_env_key=allow_env)
+    except SystemExit as e:
+        raise HTTPException(401 if "Key" in str(e) else 400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"起草失败：{type(e).__name__}: {e}")
+    # 顺带把「这份草案能不能真的建出来」预判一下，省得用户点了才发现对不上
+    warn = []
+    if (spec.get("kind") or "partition") == "partition":
+        geo = spec.get("geometry") or {}
+        srcs = geo.get("sources") or ([geo] if geo.get("iso") else [])
+        if not srcs:
+            warn.append("模型没给出数据源，无法取几何")
+    if not (spec.get("control") or {}):
+        warn.append("模型没给出归属表")
+    return {"spec": spec, "warnings": warn}
+
+
+@app.post("/api/topic/create")
+def api_topic_create(req: TopicCreateReq,
+                     x_api_key: str | None = Header(None, alias="X-Api-Key")):
+    """按规格真建一个题材：取几何 → 写控制表 → 注册 → 逐年构建。
+
+    这是分钟级的活（要下行政区数据、逐年算几何），但比出片快，所以同步做。
+    """
+    import new_topic as NT
+    spec = dict(req.spec or {})
+    if not spec.get("id"):
+        spec["id"] = NT._slug(spec.get("title") or "topic")
+    try:
+        rep = NT.build(spec, install=bool(req.install), quiet=True)
+    except SystemExit as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"构建失败：{type(e).__name__}: {e}")
+    _reload_topics()
+    # 建完立刻回报这个题材在系统里长什么样，前端可以直接切过去
+    t = topics.get(spec["id"])
+    rep["ready"] = bool(t and topics.data_ready(t)[0])
+    rep["dates"] = (t.dates() if t else []) or []
+    return rep
+
+
+# ════════════════════════════════════════════════════════════
+# 7) 静态资源
 # ════════════════════════════════════════════════════════════
 app.mount("/media", StaticFiles(directory=os.path.join(ROOT, "output")), name="media")
 
@@ -992,8 +1077,13 @@ def index():
 if __name__ == "__main__":
     import uvicorn
 
+    # 监听地址：本地默认只绑回环（安全，不会被同网段的人扫到）；
+    # 云端平台一定会注入 PORT，见到它就绑 0.0.0.0 —— 否则容器里跑得再好，
+    # 外面也连不进来（这是上云最容易漏的一步）。想手动对外开放用 HOST=0.0.0.0。
     port = int(os.environ.get("PORT") or 8810)
-    url = f"http://127.0.0.1:{port}"
+    host = os.environ.get("HOST") or ("0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
+    shown = "127.0.0.1" if host in ("127.0.0.1", "localhost") else host
+    url = f"http://{shown}:{port}"
 
     # 启动自检：几何过期就在日志里点名，别让人对着旧图排查半天
     for s in topics.stale_report():
@@ -1002,10 +1092,15 @@ if __name__ == "__main__":
         else:
             print(f"[自检] {s['topic']} 有 {len(s['stale_years'])} 年的几何是旧的"
                   f"（{s['stale_years']}）。重跑：{s['fix']}")
-    print(f"\n  工作台已启动：{url}\n  按 Ctrl+C 停止\n")
+    # 缺数据就点名：云端最常见的问题就是数据集没下载，表现却是「点开图就 500」
+    missing = topics.missing_data_report()
+    for m in missing:
+        print(f"[自检] {m['topic']} 缺数据：{m['need']}")
+        print(f"        {m['fix']}")
+    print(f"\n  工作台已启动：{url}（监听 {host}:{port}）\n  按 Ctrl+C 停止\n")
 
     # --open 才开浏览器：脚本里后台跑的时候不需要弹出窗口来打扰
-    if "--open" in sys.argv:
+    if "--open" in sys.argv and host in ("127.0.0.1", "localhost"):
         import threading
         import webbrowser
 
@@ -1021,4 +1116,4 @@ if __name__ == "__main__":
 
         threading.Thread(target=_open, daemon=True).start()
 
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info")

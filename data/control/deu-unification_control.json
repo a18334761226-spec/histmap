@@ -1,0 +1,178 @@
+{
+ "1864": {
+  "Prussia": [
+   "Berlin",
+   "Brandenburg",
+   "Sachsen",
+   "Schleswig-Holstein"
+  ],
+  "Austria": [
+   "Burgenland",
+   "Kärnten",
+   "Niederösterreich",
+   "Oberösterreich",
+   "Salzburg",
+   "Steiermark",
+   "Tirol",
+   "Vorarlberg",
+   "Wien"
+  ],
+  "Independent": [
+   "Baden-Württemberg",
+   "Bayern",
+   "Bremen",
+   "Hamburg",
+   "Hessen",
+   "Mecklenburg-Vorpommern",
+   "Niedersachsen",
+   "Nordrhein-Westfalen",
+   "Rheinland-Pfalz",
+   "Saarland",
+   "Sachsen-Anhalt",
+   "Thüringen"
+  ],
+  "France": [
+   "Auvergne-Rhône-Alpes",
+   "Bourgogne-Franche-Comté",
+   "Bretagne",
+   "Centre-Val de Loire",
+   "Corse",
+   "Grand Est",
+   "Hauts-de-France",
+   "Normandie",
+   "Nouvelle-Aquitaine",
+   "Occitanie",
+   "Pays de la Loire",
+   "Provence-Alpes-Côte d'Azur",
+   "Île-de-France"
+  ],
+  "Denmark": [
+   "Hovedstaden",
+   "Midtjylland",
+   "Nordjylland",
+   "Sjælland",
+   "Syddanmark"
+  ]
+ },
+ "1866": {
+  "Prussia": [
+   "Berlin",
+   "Brandenburg",
+   "Sachsen",
+   "Schleswig-Holstein",
+   "Hessen",
+   "Niedersachsen",
+   "Sachsen-Anhalt"
+  ],
+  "Austria": [
+   "Burgenland",
+   "Kärnten",
+   "Niederösterreich",
+   "Oberösterreich",
+   "Salzburg",
+   "Steiermark",
+   "Tirol",
+   "Vorarlberg",
+   "Wien"
+  ],
+  "Independent": [
+   "Baden-Württemberg",
+   "Bayern",
+   "Bremen",
+   "Hamburg",
+   "Mecklenburg-Vorpommern",
+   "Nordrhein-Westfalen",
+   "Rheinland-Pfalz",
+   "Saarland",
+   "Thüringen"
+  ],
+  "France": [
+   "Auvergne-Rhône-Alpes",
+   "Bourgogne-Franche-Comté",
+   "Bretagne",
+   "Centre-Val de Loire",
+   "Corse",
+   "Grand Est",
+   "Hauts-de-France",
+   "Normandie",
+   "Nouvelle-Aquitaine",
+   "Occitanie",
+   "Pays de la Loire",
+   "Provence-Alpes-Côte d'Azur",
+   "Île-de-France"
+  ],
+  "Denmark": [
+   "Hovedstaden",
+   "Midtjylland",
+   "Nordjylland",
+   "Sjælland",
+   "Syddanmark"
+  ]
+ },
+ "1871": {
+  "Prussia": [
+   "Berlin",
+   "Brandenburg",
+   "Sachsen",
+   "Schleswig-Holstein",
+   "Hessen",
+   "Niedersachsen",
+   "Sachsen-Anhalt",
+   "Baden-Württemberg",
+   "Bayern",
+   "Bremen",
+   "Hamburg",
+   "Mecklenburg-Vorpommern",
+   "Nordrhein-Westfalen",
+   "Rheinland-Pfalz",
+   "Saarland",
+   "Thüringen"
+  ],
+  "Austria": [
+   "Burgenland",
+   "Kärnten",
+   "Niederösterreich",
+   "Oberösterreich",
+   "Salzburg",
+   "Steiermark",
+   "Tirol",
+   "Vorarlberg",
+   "Wien"
+  ],
+  "France": [
+   "Auvergne-Rhône-Alpes",
+   "Bourgogne-Franche-Comté",
+   "Bretagne",
+   "Centre-Val de Loire",
+   "Corse",
+   "Grand Est",
+   "Hauts-de-France",
+   "Normandie",
+   "Nouvelle-Aquitaine",
+   "Occitanie",
+   "Pays de la Loire",
+   "Provence-Alpes-Côte d'Azur",
+   "Île-de-France"
+  ],
+  "Denmark": [
+   "Hovedstaden",
+   "Midtjylland",
+   "Nordjylland",
+   "Sjælland",
+   "Syddanmark"
+  ]
+ },
+ "_comment": "由 new_topic.py 生成的题材规格，可直接手改。",
+ "_footer": "本地图使用的是现代行政界线，而非1864-1871年间的实际界线。",
+ "_palette": {
+  "Prussia": "#4a6fa5",
+  "Austria": "#9c5b52",
+  "France": "#a08a5c",
+  "Independent": "#6f8a5a"
+ },
+ "_era": {
+  "1864": "普鲁士与奥地利联合对抗丹麦",
+  "1866": "普奥战争爆发，普鲁士战胜奥地利",
+  "1871": "普鲁士领导下的德意志帝国成立"
+ }
+}

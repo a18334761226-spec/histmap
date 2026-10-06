@@ -1,0 +1,32 @@
+# 构建镜像时不要带的
+.git
+.gitignore
+.dsh-memory
+
+# 运行产物（容器里会重新生成）
+output/
+
+# 可再下载的大件：镜像里由 Dockerfile 在构建期下载
+data/cache/
+data/raw/
+packages/core/data/cache/
+
+# Python 缓存
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 本机专属
+.env
+.secrets/
+*.log
+*-report.txt
+*.txt
+# 但依赖清单必须进镜像 —— 被上面那条 *.txt 顺手排除掉的话，
+# 构建会在 `COPY requirements.txt` 这一步直接失败（.gitignore 里踩过同一个坑）
+!requirements.txt
+
+# 编辑器
+.vscode/
+.idea/

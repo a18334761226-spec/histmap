@@ -1,0 +1,655 @@
+"""通用题材构建器：把一份「题材规格」变成能出图的新题材。
+
+跑法
+----
+    # 看有哪些国家 / 某个国家有哪些一级行政区（给人工或模型核对用）
+    python src/new_topic.py --units USA ADM1
+
+    # 按规格构建（不注册）
+    python src/new_topic.py --spec my_topic.json
+
+    # 构建并注册进 data/topics/topics.json
+    python src/new_topic.py --spec my_topic.json --install
+
+    # 让模型起草规格（需要 SILICONFLOW_API_KEY，或 --key）
+    python src/new_topic.py --draft "北美内战" --install
+
+为什么要有这个文件
+------------------
+在这之前，加一个题材 = 手工裁行政区文件 + 手工敲坐标表 + 手工写归属表，
+一个题材干一次。这不是「系统」，是人力。所以把「通用」的那部分抽出来：
+
+    · 几何：任意国家的行政区从 geoBoundaries 按需拉（约 200 个国家）
+    · 归属：由规格文件给出（可以人工写，也可以让模型起草后人工过一眼）
+    · 构建：复用 build_dynasty_map.py 的两条几何来源
+    · 校验：单元名对不上的**必须报出来**，不能悄悄出一张空一半的图
+
+规格格式（spec）
+----------------
+{
+  "id": "us-civil-war",
+  "title": "美国内战",
+  "kind": "partition",                 // partition=现成多边形；gazetteer=坐标表+县归并
+  "geometry": { "source": "geoboundaries", "iso": "USA", "adm": "ADM1" },
+  "bbox": [-126, 24, -66, 50],
+  "years": [1861, 1865],
+  "merge_by": "owner",
+  "palette": { "联邦": "#4a6fa5", "邦联": "#9c5b52" },
+  "control": { "1861": {"联邦": ["Maine"], "邦联": ["Texas"]} },
+  "source_note": "……",
+  "license_note": "geoBoundaries USA CC BY 4.0"
+}
+
+gazetteer 类用 "units": [{"name","lon","lat","modern"}, ...] 代替 geometry。
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import unicodedata
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(ROOT, "packages", "core"))
+sys.path.insert(0, os.path.join(ROOT, "packages", "server"))
+
+CACHE = os.path.join(ROOT, "data", "cache")
+PROC = os.path.join(ROOT, "data", "processed")
+CTRL = os.path.join(ROOT, "data", "control")
+TOPICS = os.path.join(ROOT, "data", "topics", "topics.json")
+UA = {"User-Agent": "histmap/0.1 (+https://github.com/; topic builder)"}
+GB_API = "https://www.geoboundaries.org/api/current/gbOpen/{iso}/{adm}/"
+
+
+# ── 名称匹配：模型给的名字和数据集里的名字几乎不可能完全一致 ──────────
+def _norm(s: str) -> str:
+    s = unicodedata.normalize("NFKD", str(s or "")).lower()
+    s = re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", s)
+    # 常见后缀：数据集里叫 "Alabama"，人会说 "State of Alabama" / "Alabama State"
+    for junk in ("stateof", "provinceof", "republicof", "oblast", "krai",
+                 "prefecture", "province", "state", "region", "county",
+                 "省", "市", "府", "州", "道", "路"):
+        if s.endswith(junk) and len(s) > len(junk) + 1:
+            s = s[: -len(junk)]
+    return s
+
+
+def match_names(want: list[str], have: list[str]) -> tuple[dict, list]:
+    """把规格里的单元名对到数据集里的真实名字。返回 (映射, 对不上的)。"""
+    idx = {_norm(h): h for h in have}
+    out, bad = {}, []
+    for w in want:
+        k = _norm(w)
+        if k in idx:
+            out[w] = idx[k]
+            continue
+        # 退化匹配：互相包含（"Dakota" 对 "North Dakota" 之类不做，容易错配；
+        # 只做「数据集名以它开头/结尾」这一种，且要求唯一）
+        cand = [h for h in have if _norm(h).startswith(k) or _norm(h).endswith(k)]
+        if len(cand) == 1:
+            out[w] = cand[0]
+        else:
+            bad.append(w)
+    return out, bad
+
+
+# ── 取几何 ────────────────────────────────────────────────────────────
+def fetch_adm(iso: str, adm: str, force: bool = False) -> str:
+    """按国家代码+层级从 geoBoundaries 拉行政区文件，返回本地路径。"""
+    iso, adm = iso.upper(), adm.upper()
+    dst = os.path.join(CACHE, f"gb_{iso.lower()}_{adm.lower()}.geojson")
+    if os.path.exists(dst) and not force and os.path.getsize(dst) > 2000:
+        return dst
+    os.makedirs(CACHE, exist_ok=True)
+    api = GB_API.format(iso=iso, adm=adm)
+    try:
+        meta = json.loads(urllib.request.urlopen(
+            urllib.request.Request(api, headers=UA), timeout=60).read())
+    except Exception as e:
+        raise SystemExit(f"取 {iso} {adm} 的元数据失败：{type(e).__name__}: {e}\n"
+                         f"（检查国家代码是否为三字母 ISO3，层级是否形如 ADM1/ADM2）")
+    url = meta.get("simplifiedGeometryGeoJSON") or meta.get("gjDownloadURL")
+    if not url:
+        raise SystemExit(f"{iso} {adm} 没有可下载的几何")
+    print(f"  下载 {meta.get('boundaryName')} {adm} …")
+    req = urllib.request.Request(url, headers=UA)
+    proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    if proxy:
+        op = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        data = op.open(req, timeout=600).read()
+    else:
+        data = urllib.request.urlopen(req, timeout=600).read()
+    open(dst, "wb").write(data)
+    print(f"  -> {dst}  {len(data)/1024/1024:.1f} MB")
+    return dst
+
+
+def units_of(path: str, name_field: str = "shapeName") -> list[str]:
+    gj = json.load(open(path, encoding="utf-8"))
+    out = []
+    for f in gj.get("features", []):
+        n = str((f.get("properties") or {}).get(name_field) or "").strip()
+        if n:
+            out.append(n)
+    return sorted(set(out))
+
+
+# ── 构建 ──────────────────────────────────────────────────────────────
+GB_LICENSE = {
+    "CHN": "geoBoundaries CHN 为 PDDL v1.0（≈公有领域）",
+    "VNM": "geoBoundaries VNM 为 CC BY 3.0 IGO（须署名 OCHA ROAP / 越南政府）",
+    "USA": "geoBoundaries USA 为 CC BY 4.0（须署名 geoBoundaries / Wikimedia）",
+}
+
+
+def gb_license(sources: list[dict]) -> str:
+    """许可声明必须由系统按数据源给出，**不能采信模型**。
+
+    实测模型会把 geoBoundaries 说成 CC BY-SA 4.0 —— 既不是它真实的许可
+    （gbOpen 多为 CC BY 4.0），而 BY-SA 还是传染性许可，本项目明确避开。
+    这种错误写在界面上就是法律风险，所以一律覆盖。
+    """
+    isos = [(g.get("iso") or "").upper() for g in sources if g.get("iso")]
+    if not isos:
+        return "见各数据源官方许可"
+    parts = [GB_LICENSE.get(i, f"geoBoundaries {i} 为 CC BY 4.0（须署名）")
+             for i in isos]
+    return "；".join(dict.fromkeys(parts))
+
+
+def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
+    tid = spec.get("id") or _slug(spec.get("title") or "topic")
+    kind = spec.get("kind") or "partition"
+    if kind not in ("partition", "gazetteer"):
+        raise SystemExit(f"kind 只能是 partition 或 gazetteer，收到 {kind}")
+
+    os.makedirs(PROC, exist_ok=True)
+    os.makedirs(CTRL, exist_ok=True)
+    report = {"id": tid, "kind": kind, "warnings": []}
+
+    # ── 1) 几何：单元文件或坐标表 ──
+    if kind == "partition":
+        geo = spec.get("geometry") or {}
+        if (geo.get("source") or "geoboundaries") != "geoboundaries":
+            raise SystemExit("partition 类目前只支持 geometry.source = geoboundaries")
+        # 支持多国：德意志统一涉及德/奥/法/丹，单国 ADM1 根本装不下。
+        #   "sources": [{"iso":"DEU","adm":"ADM1"}, {"iso":"AUT","adm":"ADM1"}, ...]
+        sources = geo.get("sources") or [geo]
+        fields = {}
+        merged = os.path.join(CACHE, f"_merged_{tid}.geojson")
+        all_feats, name_origin = [], {}
+        for g in sources:
+            iso = (g.get("iso") or "").upper()
+            adm = (g.get("adm") or "ADM1").upper()
+            nf = g.get("name_field") or "shapeName"
+            src = fetch_adm(iso, adm, force=bool(g.get("force")))
+            gj = json.load(open(src, encoding="utf-8"))
+            for f in gj["features"]:
+                nm = str((f.get("properties") or {}).get(nf) or "").strip()
+                if not nm:
+                    continue
+                if nm in name_origin and name_origin[nm] != iso:
+                    report["warnings"].append(
+                        f"单元名「{nm}」在 {name_origin[nm]} 和 {iso} 里都有，"
+                        f"只保留 {name_origin[nm]} 的那个；如需两者都要，请把名字写得更具体")
+                    continue
+                name_origin[nm] = iso
+                f2 = dict(f)
+                f2["properties"] = {"id": nm, "name": nm, "iso": iso}
+                all_feats.append(f2)
+        json.dump({"type": "FeatureCollection", "features": all_feats},
+                  open(merged, "w", encoding="utf-8"), ensure_ascii=False)
+        report["units_in_source"] = len(name_origin)
+        report["sources"] = [f"{g.get('iso')} {g.get('adm', 'ADM1')}" for g in sources]
+
+        # 规格里出现的所有单元名（从 control 里收集），对到数据集上的真名
+        want = []
+        for yr, groups in (spec.get("control") or {}).items():
+            if yr.startswith("_"):
+                continue
+            for _owner, names in groups.items():
+                want += list(names)
+        want = list(dict.fromkeys(want))
+        mapping, bad = match_names(want, list(name_origin))
+        if bad:
+            report["unmatched"] = bad
+            report["warnings"].append(
+                f"有 {len(bad)} 个单元名在数据集里找不到，这些地方会是空白：{bad[:12]}")
+        if not mapping:
+            raise SystemExit(
+                "一个单元名都没对上。数据集里的真名是：\n  " +
+                "、".join(sorted(name_origin)[:40]) +
+                "\n（用 --units ISO ADM 可以完整列出来）")
+
+        keep = sorted(set(mapping.values()))
+        uf = os.path.join(PROC, f"{tid}_units.geojson")
+        _write_units(merged, uf, keep, "name",
+                     float(geo.get("simplify") or 0.02))
+        report["units_file"] = os.path.relpath(uf, ROOT).replace("\\", "/")
+        report["units_kept"] = len(keep)
+        report["coverage"] = f"{len(keep)}/{len(want)} 个规格单元找到了几何"
+
+        # control 里的名字换成真名
+        ctrl_data = _remap_control(spec, mapping)
+        units_key, units_val = "units_file", os.path.basename(uf)
+    else:
+        units = spec.get("units") or []
+        if not units:
+            raise SystemExit("gazetteer 类必须给 units（name/lon/lat）")
+        gf = os.path.join(PROC, f"{tid}_province_gazetteer.json")
+        json.dump({"_comment": f"{spec.get('title')} 单元坐标表（由 new_topic.py 生成）",
+                   "_source": spec.get("units_source") or "见 source_note",
+                   "points": units},
+                  open(gf, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        report["gazetteer"] = os.path.relpath(gf, ROOT).replace("\\", "/")
+        report["units_kept"] = len(units)
+        ctrl_data = _remap_control(spec, {})
+        units_key, units_val = "units", os.path.basename(gf)
+
+    # ── 2) 控制表 ──
+    ctrl_name = spec.get("control_file") or f"{tid}_control.json"
+    ctrl_path = os.path.join(CTRL, ctrl_name)
+    ctrl_data.setdefault("_comment", "由 new_topic.py 生成的题材规格，可直接手改。")
+    if spec.get("source_note"):
+        ctrl_data.setdefault("_footer", spec["source_note"])
+    if spec.get("palette"):
+        ctrl_data["_palette"] = spec["palette"]
+    if spec.get("era"):
+        ctrl_data["_era"] = spec["era"]
+    json.dump(ctrl_data, open(ctrl_path, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=1)
+    report["control"] = ctrl_name
+
+    # ── 年份必须和控制表对得上 ──
+    # 模型很容易在 years 里写一个控制表里没有的年份（实测漏了 1870），
+    # 那一年的几何就会构建失败。以控制表为准取交集，并把差异报出来。
+    have_years = sorted(int(k) for k in ctrl_data
+                        if not str(k).startswith("_") and str(k).isdigit())
+    want_years = [int(y) for y in (spec.get("years") or [])]
+    if want_years and have_years and set(want_years) - set(have_years):
+        dropped = sorted(set(want_years) - set(have_years))
+        report["warnings"].append(
+            f"声明了 {dropped} 但控制表里没有这些年份，已从题材里去掉"
+            f"（以控制表为准）")
+    years = [y for y in want_years if y in have_years] or have_years
+
+    # ── 3) 注册进 topics.json ──
+    entry = {
+        "id": tid, "title": spec.get("title") or tid,
+        "subtitle": spec.get("subtitle") or "",
+        "kind": "dynasty",                     # 渲染复用 dynasty 那条路
+        "bbox": spec.get("bbox") or [-180, -60, 180, 75],
+        "years": years,
+        units_key: units_val,
+        "control": ctrl_name,
+        "themes": spec.get("themes") or ["light"],
+        "default_date": spec.get("default_date") or
+                        (f"{years[len(years)//2]}-01-01" if years else None),
+        "default_size": spec.get("default_size") or "16x9",
+        "merge_by": spec.get("merge_by") or "owner",
+        "source_note": spec.get("source_note") or "",
+        # 许可由系统按数据源给，不信模型（见 gb_license 的注释）
+        "license_note": (spec.get("license_note") if kind != "partition"
+                         else gb_license(sources)),
+    }
+    if not entry["default_date"]:
+        entry.pop("default_date")
+    report["entry"] = entry
+
+    # 注册必须在构建**之前** —— build_dynasty_map 是按题材 id 去 topics.json 里
+    # 找配置的。先构建后注册的话每次都报「没有这个题材」，几何一年也出不来（踩过）。
+    if install:
+        _register(entry)
+        report["installed"] = True
+
+    # ── 4) 真构建一遍，把几何算出来（不构建就没图可出）──
+    if install:
+        _rebuild(tid, entry, report, quiet)
+    else:
+        report["warnings"].append("未加 --install，几何没构建；加 --install 才会真正可用")
+    return report
+
+
+def _slug(s: str) -> str:
+    s = re.sub(r"[^0-9a-zA-Z]+", "-", str(s)).strip("-").lower()
+    return s or "topic"
+
+
+def _write_units(src: str, dst: str, keep: list[str], field: str,
+                 simplify: float) -> None:
+    from shapely.geometry import shape, mapping
+    gj = json.load(open(src, encoding="utf-8"))
+    feats = []
+    for f in gj["features"]:
+        nm = str((f.get("properties") or {}).get(field) or "").strip()
+        if nm not in keep:
+            continue
+        try:
+            g = shape(f["geometry"])
+        except Exception:
+            continue
+        if not g.is_valid:
+            g = g.buffer(0)
+        if g.is_empty:
+            continue
+        if simplify > 0:
+            g = g.simplify(simplify, preserve_topology=True)
+        feats.append({"type": "Feature",
+                      "properties": {"id": nm, "name": nm},
+                      "geometry": mapping(g)})
+    json.dump({"type": "FeatureCollection",
+               "_meta": {"source": os.path.basename(src), "simplify": simplify,
+                         "count": len(feats)},
+               "features": feats},
+              open(dst, "w", encoding="utf-8"), ensure_ascii=False)
+
+
+def _remap_control(spec: dict, mapping: dict) -> dict:
+    out = {}
+    for k, v in (spec.get("control") or {}).items():
+        if k.startswith("_"):
+            out[k] = v
+            continue
+        out[k] = {o: [mapping.get(n, n) for n in names] for o, names in v.items()}
+    return out
+
+
+def _register(entry: dict) -> None:
+    doc = json.load(open(TOPICS, encoding="utf-8"))
+    doc["topics"] = [t for t in doc["topics"] if t.get("id") != entry["id"]]
+    doc["topics"].append(entry)
+    json.dump(doc, open(TOPICS, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+    print(f"  已注册题材 {entry['id']} -> {TOPICS}")
+
+
+def _rebuild(tid: str, entry: dict, report: dict, quiet: bool) -> None:
+    """调 build_dynasty_map 把每一年的几何算出来。
+
+    这里必须真跑一遍：题材注册了但 *_map.geojson 不在，界面上就是
+    「有题材、点开空白」。宁可构建时报错，也不要留着那种状态。
+    """
+    import subprocess
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([
+        os.path.join(ROOT, "packages", "server"),
+        os.path.join(ROOT, "packages", "core"), HERE])
+    years = entry.get("years") or []
+    ok, failed = 0, []
+    for y in years:
+        r = subprocess.run([sys.executable, os.path.join(HERE, "build_dynasty_map.py"),
+                            "--topic", tid, "--year", str(y), "--force", "--quiet"],
+                           capture_output=True, text=True, env=env, cwd=ROOT,
+                           errors="replace")
+        if r.returncode == 0:
+            ok += 1
+        else:
+            failed.append((y, (r.stderr or r.stdout or "").strip().splitlines()[-1:]))
+    report["built_years"] = ok
+    if failed:
+        report["warnings"].append(f"有 {len(failed)} 个年份没构建成功：{failed[:3]}")
+    if not quiet:
+        print(f"  几何构建 {ok}/{len(years)} 年")
+
+
+# ── 让模型起草规格 ────────────────────────────────────────────────────
+DRAFT_PROMPT = """你在为一个历史地图系统起草「题材规格」的第一半：**只决定几何来源和年份**。
+用户想要的历史地图主题：
+
+{ask}
+
+系统能用的几何只有两种，**不许编造数据源**：
+1. geoboundaries —— 任意国家的真实行政区。给 ISO3 三字母代码 + 层级 ADM1/ADM2。
+   适合「某国/某区域的内部格局」（内战、分裂、统一、占领、分治）。
+   **涉及几个国家就列几个**，例如德意志统一要同时给 DEU、AUT、FRA、DNK。
+2. gazetteer —— 中国历史朝代：用现代县界当底图，你给出省级单元的治所经纬度。
+
+只输出一个 JSON 对象，不要解释、不要围栏：
+
+{{
+  "id": "短横线小写英文 id",
+  "title": "中文标题",
+  "subtitle": "一句话副标题",
+  "kind": "partition 或 gazetteer",
+  "geometry": {{"source":"geoboundaries",
+               "sources":[{{"iso":"DEU","adm":"ADM1"}}, {{"iso":"AUT","adm":"ADM1"}}]}},
+  "bbox": [minLon, minLat, maxLon, maxLat],
+  "years": [3-6 个有代表性的年份，取转折点，不要逐年铺],
+  "default_date": "YYYY-01-01",
+  "merge_by": "owner",
+  "source_note": "数据来源与口径，必须写明「用的是现代行政界、不是当年的界线」",
+  "license_note": "许可"
+}}
+
+**这一半暂时不要给 control 和 palette** —— 单元的真实名字要等系统把数据拉下来才知道，
+下一步会把它给你，你再分配归属。这样比凭印象拼名字可靠得多。
+gazetteer 类这一半也先别给 units，同样等下一步。
+
+只做「谁控制哪一块」的地图，不要编造战线、伤亡、人物。"""
+
+
+DRAFT_PROMPT_2 = """接着上一步。你已经定了几何来源，系统把数据拉下来了。
+现在把**真实存在的单元名**分配归属。
+
+主题：{ask}
+
+可用的单元（这些是数据集里的**真实名字**，请原样使用，不要改写、不要翻译）：
+{units}
+
+请只输出一个 JSON 对象，不要解释、不要围栏：
+
+{{
+  "palette": {{"归属方名": "#rrggbb", ...}},
+  "era": {{"年份": "这一年的一句话概括", ...}},
+  "control": {{"年份": {{"归属方名": ["单元名，必须是上面列表里的原样字符串", ...]}}}}
+}}
+
+硬要求：
+- 单元名必须**逐字照抄**上面的列表，大小写和拼写都不能改。对不上的会被丢弃、留空白。
+- **归属方名一律用中文**（如「普鲁士」「奥地利」「法国」「丹麦」）——
+  这是中文产品，图上标注成 Prussia / France 很跳。
+- 每个年份要覆盖你打算表现的全部单元；不想表现的可以不列。
+- 归属方 2–5 个，**每个年份的归属方集合可以不同**（这就是演变）。
+- 颜色用**低饱和的旧地图配色**（示意风格，不要纯红纯绿纯蓝）：
+  好的例子 #4a6fa5、#9c5b52、#a08a5c、#6f8a5a、#8a8f96、#b8912f。
+  不要用 #FF0000 / #00FF00 / #0000FF 这类高饱和原色。
+- subtitle 用中文；source_note 也要写明「用的是现代行政界、不是当年的界线」。
+- 只做「谁控制哪一块」，不要编造战线、伤亡、人物。"""
+
+
+DRAFT_PROMPT_3 = """接着上一步。这个主题属于中国历史朝代，请给出省级单元的治所坐标。
+
+主题：{ask}
+
+只输出一个 JSON 对象，不要解释、不要围栏：
+
+{{
+  "units": [{{"name": "单元名", "lon": 经度, "lat": 纬度, "modern": "对应今地"}}],
+  "palette": {{"政权名": "#rrggbb"}},
+  "era": {{"年份": "这一年的一句话概括"}},
+  "control": {{"年份": {{"政权名": ["单元名"]}}}}
+}}
+
+硬要求：
+- 坐标必须是**真实存在的城市位置**，精确到小数点后两位。系统会用现代县界逐点校验，
+  落在任何县境之外的会被拦下。
+- 单元取省级或同等层级，10–30 个，不要细到府州县。
+- 归属方 2–5 个；每个年份的归属方集合可以不同（这就是演变）。
+- 颜色用低饱和的旧地图配色，不要纯红纯绿纯蓝。
+- 只做「谁控制哪一块」，不要编造战线、伤亡、人物。"""
+
+
+def _post_json(url: str, payload: dict, key: str, timeout: int = 180) -> dict:
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        method="POST")
+    try:
+        return json.loads(urllib.request.urlopen(req, timeout=timeout).read())
+    except Exception as e:
+        raise SystemExit(f"模型调用失败：{type(e).__name__}: {e}")
+
+
+def _chat(base: str, key: str, model: str, prompt: str) -> dict:
+    d = _post_json(base + "/chat/completions", {
+        "model": model, "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+        "messages": [{"role": "user", "content": prompt}]}, key)
+    txt = (d["choices"][0]["message"]["content"] or "").strip()
+    if txt.startswith("```"):
+        txt = txt.split("\n", 1)[1] if "\n" in txt else txt
+        if txt.rstrip().endswith("```"):
+            txt = txt.rstrip()[:-3]
+    return json.loads(txt)
+
+
+def draft(ask: str, key: str = "", model: str = "Qwen/Qwen2.5-72B-Instruct",
+          verbose: bool = True, allow_env_key: bool = True) -> dict:
+    """两阶段起草。
+
+    为什么要两阶段：单元名必须和数据集里的**逐字一致**，而模型凭印象拼出来的
+    名字（"Bavaria" vs 数据里的 "Bayern"、"Austria" 根本不在德国数据里）
+    会让图悄悄缺一大块。所以先只让模型定几何来源，系统把真名拉出来，
+    再把真名交给模型去分配归属 —— 全程它只能从真实列表里选。
+
+    allow_env_key：命令行用（自己的机器，读 .env 天经地义）；
+    **服务端必须传 False** —— 否则任何访客的请求都会拿站长 .env 里的 key 去调模型，
+    等于把 key 开放给所有人。
+    """
+    key = key or os.environ.get("SILICONFLOW_API_KEY") or (
+        _key_from_env_file() if allow_env_key else "")
+    if not key:
+        raise SystemExit("起草规格需要模型 Key：设 SILICONFLOW_API_KEY，或用 --key 传")
+    base = (os.environ.get("SILICONFLOW_BASE") or
+            "https://api.siliconflow.cn/v1").rstrip("/")
+
+    if verbose:
+        print("  第一半：定几何来源与年份…")
+    spec = _chat(base, key, model, DRAFT_PROMPT.format(ask=ask))
+
+    # 把真实单元名拉出来 —— 这是模型不可能凭记忆知道的东西
+    kind = spec.get("kind") or "partition"
+    if kind == "partition":
+        geo = spec.get("geometry") or {}
+        sources = geo.get("sources") or ([geo] if geo.get("iso") else [])
+        names = []
+        for g in sources:
+            iso = (g.get("iso") or "").upper()
+            if not iso:
+                continue
+            try:
+                p = fetch_adm(iso, (g.get("adm") or "ADM1").upper())
+                for n in units_of(p, g.get("name_field") or "shapeName"):
+                    if n not in names:
+                        names.append(n)
+            except SystemExit as e:
+                if verbose:
+                    print(f"  ! {iso} 取数失败，跳过：{e}")
+        if not names:
+            raise SystemExit("没有从任何几何来源拿到单元名，无法继续")
+        if verbose:
+            print(f"  拿到 {len(names)} 个真实单元名，交给模型分配归属…")
+        # 名字太多时截断，避免撑爆上下文（德意志各州才 16 个，够用）
+        shown = names if len(names) <= 120 else names[:120]
+        tail = "" if len(names) <= 120 else f"\n（还有 {len(names)-120} 个未列出）"
+        prompt2 = DRAFT_PROMPT_2.format(ask=ask, units="、".join(shown) + tail)
+
+        # 年份必须齐：实测模型会漏（声明 4 个年份、只给 1 个），
+        # 那一年的几何就构建不出来。缺了就带着「你漏了哪几年」再问一次。
+        want = [str(y) for y in (spec.get("years") or [])]
+        got = _chat(base, key, model, prompt2)
+        for attempt in (1, 2):
+            have = [k for k in (got.get("control") or {}) if not k.startswith("_")]
+            missing = [y for y in want if y not in have]
+            if not missing:
+                break
+            if verbose:
+                print(f"  模型漏了 {missing} 年（第 {attempt} 次重试）…")
+            got = _chat(base, key, model,
+                        prompt2 + f"\n\n上一次你只给了这些年份：{have or '（空）'}，"
+                                 f"**缺了 {missing}**。这次必须把 {want} 全部给出。")
+        spec["palette"] = got.get("palette") or {}
+        spec["era"] = got.get("era") or {}
+        spec["control"] = got.get("control") or {}
+    else:
+        if verbose:
+            print("  gazetteer 类：等模型给单元坐标…")
+        got = _chat(base, key, model, DRAFT_PROMPT_3.format(ask=ask))
+        spec.update(got)
+    return spec
+
+
+def _key_from_env_file() -> str:
+    p = os.path.join(ROOT, ".env")
+    if not os.path.exists(p):
+        return ""
+    for line in open(p, encoding="utf-8"):
+        if line.strip().startswith("SILICONFLOW_API_KEY="):
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--spec", help="题材规格 JSON 文件")
+    ap.add_argument("--draft", help="用一句话让模型起草规格")
+    ap.add_argument("--key", default="", help="模型 Key（缺省读 .env / 环境变量）")
+    ap.add_argument("--model", default="Qwen/Qwen2.5-72B-Instruct")
+    ap.add_argument("--save-draft", help="把起草出来的规格存到文件，便于人工改")
+    ap.add_argument("--install", action="store_true", help="注册进 topics.json")
+    ap.add_argument("--units", nargs=2, metavar=("ISO", "ADM"),
+                    help="列出某国某层级的单元名，例如 --units USA ADM1")
+    ap.add_argument("--countries", action="store_true", help="列出有数据的国家（慢）")
+    ap.add_argument("--quiet", action="store_true")
+    args = ap.parse_args()
+
+    if args.countries:
+        try:
+            d = json.loads(urllib.request.urlopen(
+                urllib.request.Request(
+                    "https://www.geoboundaries.org/api/current/gbOpen/",
+                    headers=UA), timeout=120).read())
+            print(f"geoBoundaries 覆盖 {len(d)} 个国家和地区")
+            print(", ".join(sorted(d)[:200]))
+        except Exception as e:
+            raise SystemExit(f"取国家列表失败：{e}")
+        return
+
+    if args.units:
+        iso, adm = args.units
+        p = fetch_adm(iso, adm)
+        us = units_of(p)
+        print(f"{iso} {adm}：{len(us)} 个单元")
+        for i in range(0, len(us), 6):
+            print("  " + ", ".join(us[i:i + 6]))
+        return
+
+    spec = None
+    if args.spec:
+        spec = json.load(open(args.spec, encoding="utf-8"))
+    elif args.draft:
+        print(f"让模型起草「{args.draft}」的题材规格…")
+        spec = draft(args.draft, args.key, args.model)
+        print(json.dumps(spec, ensure_ascii=False, indent=1)[:1200])
+        if args.save_draft:
+            json.dump(spec, open(args.save_draft, "w", encoding="utf-8"),
+                      ensure_ascii=False, indent=1)
+            print(f"  已存到 {args.save_draft}（可以手改后再 --spec）")
+    else:
+        ap.error("要么给 --spec，要么给 --draft")
+
+    print(f"\n构建题材 {spec.get('id')} …")
+    rep = build(spec, install=args.install, quiet=args.quiet)
+    print(json.dumps(rep, ensure_ascii=False, indent=1))
+    if rep.get("warnings"):
+        print("\n注意：")
+        for w in rep["warnings"]:
+            print("  !", w)
+
+
+if __name__ == "__main__":
+    main()

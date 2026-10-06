@@ -96,8 +96,17 @@ header{height:52px;display:flex;align-items:center;gap:16px;padding:0 14px;
 .tab.on{background:var(--active);color:var(--text);font-weight:600;box-shadow:var(--sh-1)}
 .tab i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.35;flex:none}
 .tab.on i{opacity:1;background:var(--accent)}
+.tab.off{color:var(--text-3);text-decoration:line-through;text-decoration-color:var(--err)}
+.tab.off em{color:var(--err)}
 .tab em{font-style:normal;font-size:10.5px;color:var(--text-3);font-family:var(--mono)}
 .hright{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+/* 缺数据的提示条：云端部署时最常见的问题，直接摆在顶栏下面 */
+.warnbar{display:none;flex:none;padding:7px 14px;background:rgba(249,112,102,.1);
+  border-bottom:1px solid rgba(249,112,102,.35);color:var(--text-2);font-size:11.5px;
+  line-height:1.6}
+.warnbar b{color:var(--ink,#e8ecf2);font-weight:600}
+.warnbar code{font-family:var(--mono);background:var(--bg);border:1px solid var(--line-2);
+  border-radius:3px;padding:1px 5px;color:var(--text)}
 .pill{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;
   border-radius:999px;background:var(--raise);border:1px solid var(--line);
   font-size:11.5px;color:var(--text-2)}
@@ -334,10 +343,13 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
   <div class="tabs" id="tabs"></div>
   <div class="hright">
     <span class="pill" id="keyPill"><span class="dot"></span><span id="keyText">未填 Key</span></span>
+    <button class="btn sm" id="btnNew">+ 新题材</button>
     <button class="btn sm" id="btnJobs">作品库 <span class="cnt" id="jobCnt"></span></button>
     <button class="btn sm" id="btnSet">设置</button>
   </div>
 </header>
+
+<div class="warnbar" id="dataWarn"></div>
 
 <main>
   <!-- ── 左：分镜 ── -->
@@ -544,6 +556,43 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
 
 <div id="toast"></div>
 
+<!-- 新题材：这个框才是「任意题材」的入口 -->
+<div class="mask" id="newMask">
+  <div class="modal" style="width:min(620px,94vw)">
+    <h2>新建题材</h2>
+    <p class="s">说一句你想要的历史地图。系统自己判断用哪份数据源、取几何、分配归属，
+      然后把题材建出来 —— 不需要改代码。</p>
+
+    <label>你想要什么</label>
+    <textarea id="nwAsk" rows="2" placeholder="例如：印巴分治 1947 / 拿破仑战争时期的欧洲 / 明代九边"></textarea>
+    <div class="row" style="margin-top:9px">
+      <button class="btn grow" id="nwGo">① 让模型起草</button>
+      <span class="tiny dim" id="nwStat"></span>
+    </div>
+
+    <div id="nwBox" style="display:none;margin-top:12px">
+      <label>草案（可以直接改）</label>
+      <textarea id="nwSpec" rows="12" spellcheck="false"
+                style="font-family:var(--mono);font-size:11px"></textarea>
+      <div id="nwWarn" class="note" style="display:none"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri grow" id="nwBuild">② 按这份草案建题材</button>
+        <button class="btn gh" id="nwRedo">重起草</button>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:14px">
+      几何来自 <b>geoBoundaries</b>（约 200 个国家的真实行政区）或
+      <b>现代中国县界</b>；归属表由模型起草。<b>模型会出错</b> ——
+      所以建之前请看一眼草案，而且构建时会校验：单元名对不上、坐标落在境外，
+      都会被报出来而不是悄悄留空白。许可信息由系统按数据源给出，不采信模型。
+    </div>
+    <div class="acts">
+      <button class="btn gh" id="nwClose">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 /* ══════════════════════════════════════════════════════════════════ */
@@ -638,9 +687,12 @@ async function boot(){
 
 /* ── 题材 ─────────────────────────────────────────────────────────── */
 function tabs(){
-  $('#tabs').innerHTML = SCENES.map(s =>
-    `<button class="tab${s.id === st.scene ? ' on' : ''}" data-id="${esc(s.id)}">
-       <i></i>${esc(s.title)}<em>${(s.dates||[]).length}</em></button>`).join('');
+  $('#tabs').innerHTML = SCENES.map(s => {
+    const off = s.ready === false;
+    return `<button class="tab${s.id === st.scene ? ' on' : ''}${off ? ' off' : ''}"
+       data-id="${esc(s.id)}" ${off ? `title="缺数据：${esc(s.missing)}"` : ''}>
+       <i></i>${esc(s.title)}<em>${off ? '缺数据' : (s.dates||[]).length}</em></button>`;
+  }).join('');
   $$('#tabs .tab').forEach(b => b.onclick = () => {
     if (b.dataset.id === st.scene) return;
     st.scene = b.dataset.id;
@@ -649,6 +701,16 @@ function tabs(){
     st.size = s.default_size || '16x9';
     tabs(); syncParams(); fillRange(); rebuild(); renderOne();
   });
+  // 有题材缺数据就直说，别等用户点开图看到 500
+  const off = SCENES.filter(s => s.ready === false);
+  if (off.length){
+    const box = $('#dataWarn');
+    box.style.display = 'block';
+    box.innerHTML = `有 ${off.length} 个题材缺运行期数据：<b>${
+      off.map(s => esc(s.title) + '（' + esc(s.missing) + '）').join('、')
+    }</b><br>补数据：<code>python src/fetch_data.py --all</code>
+      （CShapes 许可要求学术引用，故不进仓库，走下载器）`;
+  }
 }
 
 /* ── 参数 ─────────────────────────────────────────────────────────── */
@@ -1294,6 +1356,68 @@ $('#tpPlay').onclick = () => playing ? stopPlay() : play();
 
 function openJobs(){ $('#drawer').classList.add('on'); $('#scrim').classList.add('on'); loadJobs(); }
 function closeJobs(){ $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); }
+
+/* ── 新建题材：一句话 → 草案 → 建出来 ─────────────────────────────── */
+$('#btnNew').onclick = () => {
+  $('#newMask').classList.add('on');
+  $('#nwAsk').focus();
+};
+$('#nwClose').onclick = () => $('#newMask').classList.remove('on');
+$('#newMask').onclick = e => { if (e.target.id === 'newMask') $('#newMask').classList.remove('on'); };
+
+$('#nwGo').onclick = async () => {
+  const ask = $('#nwAsk').value.trim();
+  if (!ask){ toast('先说一句你想要什么'); return; }
+  if (!cfg.key){ toast('起草要模型 Key —— 右上角设置里填一个'); return; }
+  $('#nwGo').disabled = true;
+  $('#nwStat').textContent = '模型在挑数据源、分配归属…（约 10–40 秒）';
+  try {
+    const r = await api('/api/topic/draft', {method:'POST', body: JSON.stringify({ask})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(errText(j.detail, '起草失败'));
+    $('#nwSpec').value = JSON.stringify(j.spec, null, 1);
+    $('#nwBox').style.display = 'block';
+    const w = j.warnings || [];
+    $('#nwWarn').style.display = w.length ? 'block' : 'none';
+    $('#nwWarn').innerHTML = w.map(esc).join('<br>');
+    $('#nwStat').textContent = '草案就绪 —— 看一眼再建';
+  } catch(e){
+    $('#nwStat').textContent = '';
+    toast(e.message);
+  } finally { $('#nwGo').disabled = false; }
+};
+
+$('#nwRedo').onclick = () => $('#nwGo').click();
+
+$('#nwBuild').onclick = async () => {
+  let spec;
+  try { spec = JSON.parse($('#nwSpec').value); }
+  catch(e){ toast('草案不是合法 JSON：' + e.message); return; }
+  $('#nwBuild').disabled = true;
+  $('#nwStat').textContent = '在下数据、逐年算几何…（约 30 秒到几分钟）';
+  try {
+    const r = await api('/api/topic/create', {method:'POST', body: JSON.stringify({spec})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(errText(j.detail, '构建失败'));
+    // 题材列表变了，重新拉一遍并切过去
+    SCENES = ((await (await fetch('/api/scenes')).json()).scenes) || SCENES;
+    st.scene = spec.id;
+    const s = scene();
+    if (s){
+      st.theme = (s.themes || ['dark'])[0];
+      st.size = s.default_size || '16x9';
+    }
+    tabs(); syncParams(); fillRange(); rebuild(); renderOne();
+    $('#newMask').classList.remove('on');
+    const w = j.warnings || [];
+    toast(`题材「${spec.title || spec.id}」建好了：${j.built_years || 0} 个年份`
+          + (w.length ? `；有 ${w.length} 条提醒，见控制台` : ''));
+    if (w.length) console.warn('新建题材的提醒：', w);
+  } catch(e){
+    $('#nwStat').textContent = '';
+    toast(e.message);
+  } finally { $('#nwBuild').disabled = false; }
+};
 $('#btnJobs').onclick = openJobs;
 $('#scrim').onclick = closeJobs;
 $('#btnJobsClose').onclick = closeJobs;
@@ -1306,7 +1430,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') $('#tpPrev').click();
   if (e.key === 'ArrowRight') $('#tpNext').click();
   if (e.key === ' '){ e.preventDefault(); $('#tpPlay').click(); }
-  if (e.key === 'Escape'){ closeJobs(); $('#mask').classList.remove('on'); }
+  if (e.key === 'Escape'){ closeJobs(); $('#mask').classList.remove('on');
+    $('#newMask').classList.remove('on'); }
 });
 
 boot();

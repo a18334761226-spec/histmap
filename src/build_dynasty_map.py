@@ -172,21 +172,39 @@ def build(topic_id: str, year: int, max_km: float = 260.0,
             print(f"已存在 {dst}（--force 可重建）")
         return dst
 
+    # 两种几何来源：
+    #   units      —— 坐标表（州治经纬度）→ 把现代县就近归并成单元的面（唐、宋、明清）
+    #   units_file —— 现成多边形表，单元本来就是一个个面（美国内战：州就是单元）
+    # 下游完全一样：按归属方合并 → 上色 → 写 geojson。所以两条来源在这里分叉一次就够。
     units_path = t.raw.get("units")
-    if not units_path:
-        raise SystemExit(f"题材 {topic_id} 没声明 units 文件")
-    up = units_path if os.path.isabs(units_path) else os.path.join(PROC, units_path)
-    if not os.path.exists(up):
-        raise SystemExit(f"找不到单元表: {up}")
+    units_file = t.raw.get("units_file")
+    if not units_path and not units_file:
+        raise SystemExit(f"题材 {topic_id} 既没声明 units 也没声明 units_file")
+    up = None
+    if units_path:
+        up = units_path if os.path.isabs(units_path) else os.path.join(PROC, units_path)
+        if not os.path.exists(up):
+            raise SystemExit(f"找不到单元表: {up}")
+    uf = None
+    if units_file:
+        uf = units_file if os.path.isabs(units_file) else os.path.join(PROC, units_file)
+        if not os.path.exists(uf):
+            raise SystemExit(f"找不到单元多边形表: {uf}")
     ctrl = t.control_path()
     if not ctrl:
         raise SystemExit(f"题材 {topic_id} 没声明 control 文件")
 
-    units = load_units(up)
     raw = json.load(open(ctrl, encoding="utf-8"))
     owner = parse_owner_table(raw, year)
     if not owner:
         raise SystemExit(f"控制表里没有 {year} 年")
+
+    if uf:
+        # 现成多边形：跳过坐标表与县归并，直接把面按归属方分组
+        return build_from_polygons(t, year, uf, raw, owner, dst, force,
+                                   simplify, quiet)
+
+    units = load_units(up)
 
     if not quiet:
         print(f"=== {t.title} · {year} 年 ===")
@@ -314,6 +332,105 @@ def sha1_of(path: str) -> str:
     canon = json.dumps(obj, sort_keys=True, ensure_ascii=False,
                        separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(canon).hexdigest()[:16]
+
+
+def build_from_polygons(t, year: int, uf: str, raw: dict, owner: dict,
+                        dst: str, force: bool, simplify: float, quiet: bool):
+    """单元本来就是多边形的那种题材（美国内战：州即单元）。
+
+    不经过「县 → 最近单元」这一步 —— 现成的面比就近归并更准，
+    再走一遍只会把边界啃坏。
+    """
+    from shapely.geometry import shape, mapping
+    from shapely.ops import unary_union
+    import hashlib
+    import json as _json
+    import os as _os
+
+    gj = _json.load(open(uf, encoding="utf-8"))
+    disp = raw.get("_display") or {}
+    pal = raw.get("_palette") or {}
+    ckey = raw.get("_color_key") or {}
+    merge_by = t.raw.get("merge_by", "owner")
+
+    by_name = {}
+    for f in gj["features"]:
+        nm = str((f.get("properties") or {}).get("name") or "").strip()
+        if not nm:
+            continue
+        try:
+            g = shape(f["geometry"])
+        except Exception:
+            continue
+        if not g.is_valid:
+            g = g.buffer(0)
+        if not g.is_empty:
+            by_name[nm] = g
+
+    active = {n: o for n, o in owner.items() if n in by_name}
+    missing = [n for n in owner if n not in by_name]
+    if not quiet:
+        print(f"=== {t.title} · {year} 年 ===")
+        print(f"[1] 多边形单元 {len(by_name)} 个；控制表给出 {len(owner)} 个")
+        print(f"[2] 命中 {len(active)} 个" + (f"；对不上的 {missing[:10]}" if missing else ""))
+    if not active:
+        raise SystemExit(f"{year} 年一个单元都没对上，检查控制表里的名字")
+
+    groups = {}
+    for unit, own in active.items():
+        key = unit if merge_by == "unit" else own
+        groups.setdefault(key, []).append(by_name[unit])
+
+    feats = []
+    for grp, geoms in groups.items():
+        try:
+            merged = unary_union(geoms)
+        except Exception:
+            continue
+        if merged.is_empty:
+            continue
+        if simplify > 0:
+            merged = merged.simplify(simplify, preserve_topology=True)
+        c = merged.centroid
+        if merge_by == "unit":
+            us, own = [grp], active.get(grp, grp)
+            name = disp.get(grp, grp)
+        else:
+            us = sorted(u for u, o in active.items() if o == grp)
+            own = grp
+            name = disp.get(grp, grp)
+        color = pal.get(own) or stable_color(ckey.get(own, own), list(groups))
+        feats.append({
+            "type": "Feature",
+            "properties": {"id": name, "name": name, "color": color,
+                           "owner": own, "units": us,
+                           "label_lon": round(c.x, 3), "label_lat": round(c.y, 3)},
+            "geometry": mapping(merged)})
+
+    def sha1_of(p):
+        obj = _json.load(open(p, encoding="utf-8"))
+        canon = _json.dumps(obj, sort_keys=True, ensure_ascii=False,
+                            separators=(",", ":")).encode("utf-8")
+        return hashlib.sha1(canon).hexdigest()[:16]
+
+    out = {"type": "FeatureCollection",
+           "_meta": {"topic": t.id, "year": year, "units_source": _os.path.basename(uf),
+                     "method": t.source_note or
+                               "单元为现成行政区多边形；归属据控制表，非当年实际界线",
+                     "units_total": len(by_name), "units_matched": len(active),
+                     "units_missing": missing,
+                     "control_sha1": sha1_of(t.control_path()),
+                     "gazetteer_sha1": sha1_of(uf),
+                     "built_from": {"control": _os.path.basename(t.control_path()),
+                                    "units": _os.path.basename(uf)}},
+           "features": feats}
+    _json.dump(out, open(dst, "w", encoding="utf-8"), ensure_ascii=False)
+    if not quiet:
+        print(f"[5] -> {dst}  ({_os.path.getsize(dst)/1024:.0f} KB)")
+        for g, n in sorted(((f['properties']['owner'], len(f['properties']['units']))
+                            for f in feats), key=lambda x: -x[1]):
+            print(f"    {g:8s} {n:3d} 个单元")
+    return dst
 
 
 def main():

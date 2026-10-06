@@ -1,0 +1,15 @@
+# Render 蓝图：连上仓库后可以直接一键部署
+# 文档见 DEPLOY.md
+services:
+  - type: web
+    name: histmap
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8810
+      - key: HOST
+        value: 0.0.0.0

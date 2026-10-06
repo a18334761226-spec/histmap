@@ -22,9 +22,12 @@ data/processed/*
 # 州治坐标表与州名词典：build_dynasty_map.py 直接读
 !data/processed/tang_zhou_gazetteer.json
 !data/processed/tang_zhou_dict.json
-# 宋·路制单元坐标表 —— 手工整理，**没有任何脚本能重新生成它**，丢了就没了
-!data/processed/song_lu_gazetteer.json
-# 已经算好的逐年几何。不带上它，clone 后宋/唐的 dates() 返回空、点开是空白页。
+# 单元坐标表（手工整理或 new_topic.py 生成）—— 没有任何脚本能凭空造出坐标，
+# 丢了题材就废了。注意 `*_gazetteer.json` 不会匹配 `*_gazetteer_checked.json`（中间产物）。
+!data/processed/*_gazetteer.json
+# 单元多边形表（new_topic.py 从 geoBoundaries 裁出来的，体积小、可作源数据）
+!data/processed/*_units.geojson
+# 已经算好的逐年几何。不带上它，clone 后唐宋的 dates() 返回空、点开是空白页。
 # 改了 data/control/ 里的控制表后，记得重跑：
 #   python src/build_dynasty_map.py --topic <id> --all-years --force
 # 然后一起提交（服务启动时会自检并提示哪些年份的图过期了）。

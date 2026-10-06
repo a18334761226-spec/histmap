@@ -53,6 +53,20 @@ SOURCES = {
         "license": "学术引用要求；**商用条款未确认**（Schvitz et al. 2022, JCR 66(1):144-61）",
         "note": "近现代国界 1886–2019，25 MB",
     },
+    "gb_usa": {
+        "file": "gb_usa_adm1.geojson",
+        "url": ("https://github.com/wmgeolab/geoBoundaries/raw/9469f09/"
+                "releaseData/gbOpen/USA/ADM1/geoBoundaries-USA-ADM1_simplified.geojson"),
+        "license": "CC BY 4.0（须署名 geoBoundaries / Wikimedia）",
+        "note": "美国州级多边形 51 个（美国内战题材）",
+    },
+    "gb_chn_adm1": {
+        "file": "gb_chn_adm1.geojson",
+        "url": ("https://github.com/wmgeolab/geoBoundaries/raw/9469f09/"
+                "releaseData/gbOpen/CHN/ADM1/geoBoundaries-CHN-ADM1_simplified.geojson"),
+        "license": "PDDL v1.0 (public domain dedication)",
+        "note": "中国省级多边形 31 个（明清题材按省归并时对照用）",
+    },
 }
 
 

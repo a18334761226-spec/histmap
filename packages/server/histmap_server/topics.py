@@ -192,6 +192,7 @@ def list_topics() -> list[dict]:
             ds = t.dates()
         except Exception:
             ds = []
+        ready, why = data_ready(t)
         out.append({
             "id": t.id, "title": t.title, "subtitle": t.subtitle,
             "kind": t.kind, "themes": t.themes, "dates": ds,
@@ -200,6 +201,8 @@ def list_topics() -> list[dict]:
             "default_size": t.default_size,
             "source_note": t.source_note,
             "license_note": t.raw.get("license_note", ""),
+            # 数据齐不齐：前端据此把不可用的题材标出来并说清怎么补
+            "ready": ready, "missing": why,
         })
     return out
 
@@ -455,10 +458,16 @@ def _file_sha1(path: str) -> str:
 
 
 def _units_path(topic: Topic) -> str | None:
-    up = topic.raw.get("units")
-    if not up:
-        return None
-    return up if os.path.isabs(up) else os.path.join(PROC, up)
+    """单元几何的来源文件：坐标表（units）或现成多边形表（units_file）。
+
+    两种都算「有」—— 早先这个函数只认 units，于是用 units_file 的题材
+    （美国内战）在自检里被误报成「缺数据」。
+    """
+    for key in ("units", "units_file"):
+        p = topic.raw.get(key)
+        if p:
+            return p if os.path.isabs(p) else os.path.join(PROC, p)
+    return None
 
 
 def stale_years(topic: Topic) -> list[int]:
@@ -488,6 +497,57 @@ def stale_years(topic: Topic) -> list[int]:
         if m.get("control_sha1") != cur_c or m.get("gazetteer_sha1") != cur_u:
             bad.append(int(y))
     return bad
+
+
+def missing_data_report() -> list[dict]:
+    """哪些题材缺运行期数据，以及怎么补。
+
+    为什么要有这个：云端最常见的故障是数据集没下载（CShapes 25MB 不在仓库里，
+    许可要求走下载器），但表现是「点开图就 500」，看日志才知道。启动时报出来，
+    界面也据此把题材标成不可用 —— 比让人对着一堆 500 猜强。
+    """
+    out = []
+    for t in load_topics().values():
+        need = _needs(t)
+        if not need:
+            continue
+        out.append({"topic": t.id, "need": need[0], "fix": need[1]})
+    return out
+
+
+def _needs(topic: "Topic") -> tuple[str, str] | None:
+    """这个题材缺什么。返回 (说明, 补救命令) 或 None。"""
+    if topic.kind == "dynasty":
+        up = _units_path(topic)
+        if not up or not os.path.exists(up):
+            src = topic.raw.get("units") or topic.raw.get("units_file") or "（未声明）"
+            return (f"单元几何表 {src}",
+                    "该文件在 data/processed/ 下，属入库数据，缺失说明仓库不完整")
+        ys = [y for y in (topic.raw.get("years") or [])
+              if not os.path.exists(os.path.join(PROC, f"{topic.id}_{y}_map.geojson"))]
+        if ys:
+            return (f"{len(ys)} 个年份的几何（{ys[:6]}）",
+                    f"python src/build_dynasty_map.py --topic {topic.id} --all-years --force")
+        return None
+    # boundary 类：几何来自现成数据集，没下载就跑不了
+    ds = topic.raw.get("dataset", "cshapes")
+    try:
+        from histmap_core import Registry
+        ad = Registry.get(ds)
+        fname = getattr(ad, "filename", None) or f"{ds}.geojson"
+        if not ad.has_cache(fname):
+            return (f"数据集 {ds}（{fname}）",
+                    "python src/fetch_data.py --all"
+                    "（CShapes 许可要求学术引用，故不进仓库，走下载器）")
+    except Exception as e:
+        return (f"数据集 {ds} 检查失败：{type(e).__name__}: {e}",
+                "python src/fetch_data.py --all")
+    return None
+
+
+def data_ready(topic: "Topic") -> tuple[bool, str]:
+    n = _needs(topic)
+    return (True, "") if not n else (False, n[0])
 
 
 def stale_report() -> list[dict]:
