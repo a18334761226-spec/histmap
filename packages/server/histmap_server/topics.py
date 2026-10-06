@@ -240,9 +240,33 @@ def _boundary_geometry(topic: Topic, year: int):
     return fr
 
 
+def _apply_style_colors(style, region_colors: list, legend: list, palette_map: dict,
+                        canvas_hex: str, text_hex: str | None,
+                        text_dim: str | None) -> None:
+    """把分类色重映射的结果刷到 Style 上（画布 / 文字 / 边框）。
+
+    区域色本身在各自的地方刷（boundary 在 fr.regions，dynasty 在建 Region 时），
+    图例要跟着一起换 —— 否则图例说「宋=黄褐」而图上宋是蓝的。
+    """
+    if palette_map:
+        for it in (legend or []):
+            if len(it) >= 2 and it[1] in palette_map:
+                it[1] = palette_map[it[1]]
+    style.background = canvas_hex
+    if text_hex:
+        style.title_color = text_hex
+        style.ink = text_hex
+    if text_dim:
+        style.subtitle_color = text_dim
+        style.muted = text_dim
+        style.panel_border = text_dim
+
+
 def _render_boundary(topic: Topic, date: str, theme: str, size: str,
                      title: str | None = None, subtitle: str | None = None,
-                     footer: str | None = None) -> Image.Image:
+                     footer: str | None = None,
+                     style_profile: dict | None = None,
+                     strength: float = 1.0) -> Image.Image:
     from histmap_core import Renderer, Layout, ControlTimeline, Style
     ctrl = topic.control_path()
     if not ctrl:
@@ -260,15 +284,73 @@ def _render_boundary(topic: Topic, date: str, theme: str, size: str,
         fr.subtitle = f"{beats[-1]['date'][5:]} · {beats[-1]['label']}" if beats else ""
 
     style = _topic_style(topic, theme)
+    legend = _topic_legend(topic, theme)
+
+    # 参考图风格：按**类别**重映射配色（不是对像素乘增益，那样会把政权颜色推到一起）
+    prof = None
+    if style_profile:
+        prof, legend = _style_colors(style, fr, legend, topic, theme,
+                                     style_profile, strength)
+
     W, H, mode = _sizes(size)
     lay = Layout(width=W, height=H, mode=mode,
                  band_top_ratio=0.20, band_max_height_ratio=0.52)
     r = Renderer(style, lay, projection="mercator", supersample=2)
-    legend = _topic_legend(topic, theme)
     img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
                          legend_title="实际控制")
     _draw_overlays(img, r, tl, d, style, W, H, topic, footer=footer)
+    if prof is not None:
+        img = _material_pass(img, prof, strength)
     return img
+
+
+def _style_colors(style, fr, legend, topic: Topic, theme: str,
+                  profile: dict, strength: float):
+    """走一遍分类色重映射：区域色 + 图例色 + 画布 + 文字。
+
+    返回 (用的还是原始 profile, 新的 legend)。**必须**把原始 profile 传下去，
+    因为材质层要用它里面的 _texture_grid；derive_palette 的返回值里没有那张网格，
+    早先就是拿它去跑材质层，直接 KeyError。
+    注意 legend 的元素是**元组**（不可变），所以只能重建、不能就地改。
+    """
+    import style_from_image as SFI
+    region_colors = [r.color for r in fr.regions]
+    legend_colors = [c for _, c in (legend or [])]
+    got = SFI.derive_palette(profile, region_colors + legend_colors,
+                             style.background, theme=theme, strength=strength)
+    for r in fr.regions:
+        r.color = got["map"].get(r.color, r.color)
+    new_legend = ([(n, got["map"].get(c, c)) for n, c in legend]
+                  if legend else legend)
+    style.background = got["canvas"]
+    if got.get("text"):
+        style.title_color = got["text"]
+        style.ink = got["text"]
+        # label_color 必须**显式**设：Style.from_dict 里 resolve_theme 早就跑完了，
+        # 之后再改 ink 不会回写到 label_color/label_halo，于是蓝图风格下
+        # 区域标签还是深色、贴在深蓝底上根本看不清（踩过）。
+        style.label_color = got["text"]
+        # 标签描边用新的底色：深底给深描边、浅底给浅描边，字才立得住
+        style.label_halo = got["canvas"]
+        style.panel_bg = got["canvas"]
+    if got.get("text_dim"):
+        style.subtitle_color = got["text_dim"]
+        style.muted = got["text_dim"]
+        style.panel_border = got["text_dim"]
+    return profile, new_legend
+
+
+def _material_pass(img, profile: dict, strength: float):
+    """颜色换完之后，再压一层参考图的材质：纸纹 / 颗粒 / 暗角。
+
+    只做材质，不做颜色 —— 颜色已经在分类色那一步定死了。
+    """
+    try:
+        import style_from_image as SFI
+        return SFI.apply_style(img, profile, strength=strength, material_only=True)
+    except Exception as e:
+        print(f"[风格] 材质层失败：{type(e).__name__}: {e}")
+        return img
 
 
 def _topic_style(topic: Topic, theme: str) -> "Style":
@@ -456,7 +538,9 @@ def rings_of(geom: dict) -> list:
 
 def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                     title: str | None = None, subtitle: str | None = None,
-                    footer: str | None = None) -> Image.Image:
+                    footer: str | None = None,
+                    style_profile: dict | None = None,
+                    strength: float = 1.0) -> Image.Image:
     from histmap_core import Renderer, Layout, Region, Frame, Style
     year = int(str(date).split("-")[0])          # 别用 [:4]，807 是三位数
     gj = _dynasty_geometry(topic, year)
@@ -501,6 +585,10 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
         "legend": {"enabled": True, "position": "bottom-left",
                    "size": 16, "max_items": 12}})
     lay = Layout(width=W, height=H, mode=mode, title_ratio=0.11, footer_ratio=0.07)
+    prof = None
+    if style_profile:
+        prof, legend = _style_colors(style, fr, legend, topic, theme,
+                                     style_profile, strength)
     r = Renderer(style, lay, projection="mercator", supersample=2)
     img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
                          legend_title="所属政权")
@@ -510,25 +598,165 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
     if note:
         import make_ww2_video as M
         M.draw_footer(img, note, r, style)
+    if prof is not None:
+        img = _material_pass(img, prof, strength)
     return img
+
+
+# ════════════════════════════════════════════════════════════
+def _load_font(size: int, prefer: str = ""):
+    """找一个能画中文的字体。跟 render.py 用同一套回退顺序。"""
+    from PIL import ImageFont
+    for cand in (prefer, r"C:\Windows\Fonts\msyh.ttc",
+                 r"C:\Windows\Fonts\simhei.ttf", r"C:\Windows\Fonts\simsun.ttc",
+                 "/System/Library/Fonts/PingFang.ttc",
+                 "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"):
+        if cand and os.path.exists(cand):
+            try:
+                return ImageFont.truetype(cand, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+def _fit_font(draw, text: str, want: int, limit_px: int, prefer: str = ""):
+    """把字号往下调到能放进 limit_px 宽为止。标题太长就变小，而不是溢出画面。"""
+    size = want
+    while size > 12:
+        f = _load_font(size, prefer)
+        try:
+            w = draw.textbbox((0, 0), text, font=f)[2]
+        except Exception:
+            break
+        if w <= limit_px:
+            return f
+        size = int(size * 0.92)
+    return _load_font(max(12, size), prefer)
+
+
+def _vignette(img, strength: float = 0.16):
+    """给卡片压一层很轻的暗角，免得整块底色太平、像没做完。"""
+    from PIL import Image
+    try:
+        import numpy as np
+    except Exception:
+        return img
+    W, H = img.size
+    y, x = np.ogrid[:H, :W]
+    cx, cy = W / 2, H / 2
+    r = np.sqrt(((x - cx) / cx) ** 2 + ((y - cy) / cy) ** 2)
+    m = np.clip(1.0 - strength * np.clip(r - 0.55, 0, None) ** 1.7, 0, 1)
+    a = np.asarray(img).astype("float32")
+    a *= m[..., None]
+    return Image.fromarray(a.clip(0, 255).astype("uint8"))
+
+
+def title_card(topic: Topic, theme: str, size: str, text: str, sub: str = ""):
+    """片头/片尾标题卡。
+
+    不另起一套视觉：底色、字色、字体全部取自该题材在当前主题下的样式，
+    所以卡片和正片是一套东西，而不是「贴上去的一张图」。
+
+    版式是**左对齐的编辑式**，不是居中大字：居中孤字看起来像占位图，
+    左对齐 + 细边框 + 顶栏小字才像一张有设计过的标题卡。
+    """
+    from PIL import Image, ImageDraw
+    W, H, _ = _sizes(size)
+    st = _topic_style(topic, theme)
+    img = Image.new("RGB", (W, H), st.background)
+    img = _vignette(img)
+    d = ImageDraw.Draw(img)
+    ink = st.title_color or st.ink
+    sub_c = st.subtitle_color or st.muted
+
+    # 一圈内缩的细边框，像古籍地图的图廓
+    m = int(min(W, H) * 0.055)
+    d.rectangle([m, m, W - m, H - m], outline=sub_c, width=max(1, int(H * 0.0018)))
+    m2 = m + max(3, int(H * 0.008))
+    d.rectangle([m2, m2, W - m2, H - m2], outline=sub_c, width=1)
+
+    # 顶栏：跟地图页脚一样的位置感，写清这是哪一套
+    f_head = _load_font(max(13, int(H * 0.024)), st.label_font)
+    d.text((m * 1.5, m * 1.5), f"histmap · {topic.title}", font=f_head, fill=sub_c)
+
+    # 主标题块：左侧一根竖线 + 标题 + 副标题，整体垂直居中
+    left = int(W * 0.13)
+    limit = W - left - int(W * 0.1)
+    f_main = _fit_font(d, text or "", int(H * 0.155), limit, st.label_font)
+    f_sub = _fit_font(d, sub, int(H * 0.042), limit, st.label_font) if sub else None
+
+    tb = d.textbbox((0, 0), text or "", font=f_main)
+    th, tw = tb[3] - tb[1], tb[2] - tb[0]
+    sb = d.textbbox((0, 0), sub, font=f_sub) if sub else (0, 0, 0, 0)
+    sh = sb[3] - sb[1] if sub else 0
+    gap = int(H * 0.05) if sub else 0
+    block = th + gap + sh
+    y = (H - block) // 2
+
+    bar_w = max(3, int(W * 0.0045))
+    d.rectangle([left - int(W * 0.028), y, left - int(W * 0.028) + bar_w, y + block],
+                fill=sub_c)
+    d.text((left - tb[0], y - tb[1]), text or "", font=f_main, fill=ink)
+    if sub:
+        d.text((left - sb[0], y + th + gap - sb[1]), sub, font=f_sub, fill=sub_c)
+
+    # 右下角落款
+    f_small = _load_font(max(12, int(H * 0.022)), st.label_font)
+    d.text((W - m * 1.5, H - m * 1.5), "histmap", font=f_small,
+           fill=sub_c, anchor="rs")
+    return img
+
+
+def add_watermark(img, text: str, theme: str = "dark"):
+    """右下角烧一行水印。短视频发出去要能认出是谁做的。"""
+    if not text:
+        return img
+    from PIL import ImageDraw
+    d = ImageDraw.Draw(img, "RGBA")
+    W, H = img.size
+    fs = max(14, int(H * 0.026))
+    f = _load_font(fs, _topic_style_default_font())
+    pad = int(H * 0.03)
+    tb = d.textbbox((0, 0), text, font=f)
+    tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    x, y = W - pad - tw, H - pad - th
+    # 先描一层半透明底，浅色地图上也看得清
+    d.rectangle([x - fs * 0.4, y - fs * 0.25, x + tw + fs * 0.4, y + th + fs * 0.35],
+                fill=(0, 0, 0, 90) if theme == "dark" else (255, 255, 255, 120))
+    d.text((x, y - tb[1]), text, font=f,
+           fill=(255, 255, 255, 205) if theme == "dark" else (30, 30, 30, 205))
+    return img
+
+
+def _topic_style_default_font() -> str:
+    for p in (r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\simhei.ttf"):
+        if os.path.exists(p):
+            return p
+    return ""
 
 
 # ════════════════════════════════════════════════════════════
 def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
            title: str | None = None, subtitle: str | None = None,
-           footer: str | None = None):
+           footer: str | None = None, style_profile: dict | None = None,
+           strength: float = 1.0):
     """出一张图。
 
     title / subtitle / footer 传 None 就用题材自己的默认文案（事件副标题、
     题材口径声明），传空字符串则是「明确要求留白」—— 两者不能混为一谈，
     否则用户想清掉一行标题都做不到。
+
+    style_profile 是从参考图提取出来的风格参数。它走的是**分类色重映射**：
+    逐类别换掉区域色/画布/文字，再压一层材质（纹理/颗粒/暗角）。
+    绝不是对整张图乘颜色增益 —— 那样会把不同政权的颜色推到一起（实测毁图）。
     """
     t = get(topic_id)
     if not t:
         raise KeyError(f"没有这个题材: {topic_id}")
     if theme not in t.themes:
         theme = t.themes[0]
-    kw = {"title": title, "subtitle": subtitle, "footer": footer}
+    kw = {"title": title, "subtitle": subtitle, "footer": footer,
+          "style_profile": style_profile, "strength": strength}
     if t.kind == "dynasty":
         return _render_dynasty(t, date, theme, size, **kw)
     return _render_boundary(t, date, theme, size, **kw)

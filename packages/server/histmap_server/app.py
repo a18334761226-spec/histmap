@@ -202,18 +202,29 @@ class RenderReq(BaseModel):
     footer: str | None = None
 
 
+def _norm_profile(prof: dict | None) -> dict | None:
+    """补回前端回传时丢掉的纹理网格。
+
+    前端只存 palette / 亮度分位这些可读字段，`_texture_grid` 是 12x12 的
+    低频图，回传体积不值当，这里按固定种子重新生成一张 —— 同参数同结果。
+    """
+    if not prof:
+        return None
+    p = dict(prof)
+    if "_texture_grid" not in p:
+        import numpy as np
+        p["_texture_grid"] = np.random.default_rng(7).random((12, 12)).tolist()
+    return p
+
+
 def _apply_quality(img, req: RenderReq):
-    """把预设质感 / 参考图风格套上去。"""
-    if req.style_profile:
-        import style_from_image as SFI
-        prof = dict(req.style_profile)
-        if "_texture_grid" not in prof:        # 前端回传时丢了网格，重新生成一张
-            import numpy as np
-            g = np.random.default_rng(7).random((12, 12))
-            prof["_texture_grid"] = g.tolist()
-        variety = SFI.palette_variety(prof.get("palette") or [])
-        return SFI.apply_style(img, prof, adopt_palette=variety >= 0.18,
-                               strength=req.strength)
+    """预设质感（postfx）。
+
+    注意：**参考图风格不在这里套**。参考图风格必须先于渲染生效 ——
+    它要换的是区域色/画布/文字这些分类色，渲染完再改就晚了，
+    而且对像素做整体调色会把不同政权的颜色推到一起（实测直接毁图）。
+    所以 style_profile 由 topics.render 内部走分类色重映射。
+    """
     if req.style and req.style != "none":
         import postfx
         return postfx.stylize(img, req.style, seed=7)
@@ -228,9 +239,11 @@ def api_render(req: RenderReq):
     if req.theme not in t.themes:
         req.theme = t.themes[0]
     t0 = time.time()
+    prof = _norm_profile(req.style_profile)
     try:
         img = topics.render(req.scene, req.date, req.theme, req.size,
-                            title=req.title, subtitle=req.subtitle, footer=req.footer)
+                            title=req.title, subtitle=req.subtitle, footer=req.footer,
+                            style_profile=prof, strength=req.strength)
     except FileNotFoundError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -262,6 +275,13 @@ class FrameReq(BaseModel):
     footer: str | None = None
 
 
+class CardReq(BaseModel):
+    """片头/片尾标题卡。text 为空则不出这张卡。"""
+    text: str = ""
+    sub: str = ""
+    seconds: float = 2.0
+
+
 class VideoReq(BaseModel):
     scene: str
     # 两种给帧的方式：
@@ -276,10 +296,18 @@ class VideoReq(BaseModel):
     style_profile: dict | None = None
     fps: int = 24
     hold: float = 0.30                        # 每帧默认停留秒数
+    # 转场：0 = 硬切（快，走 concat）；>0 = 交叉溶解秒数。
+    # 这个字段在上一版就声明了却从没被用过 —— 也就是说转场一直是硬切，
+    # 界面上写着的「交叉溶解」是假的。现在真的实现了。
+    fade: float = 0.0
+    # 镜头运动：none / in（缓推）/ out（缓拉）。让静态地图有点呼吸感。
+    motion: str = "none"
+    intro: CardReq | None = None
+    outro: CardReq | None = None
+    watermark: str = ""                       # 水印文字，烧在右下角
     # 上限只用来兜住手滑（比如拿月份当区间滑到几万帧），不该成为常见区间的暗坑：
     # 二战 1939–1945 有 146 个时间点，卡在 60 就是「界面说 146 张、实际只出 60 张」。
     max_frames: int = 240
-    fade: float = 0.20                        # 交叉溶解时长
     # "video" = 出完全部图再合成片子；"frames" = 只出图，不调 ffmpeg。
     # 后者是给分镜预演用的：先在浏览器里照真实节奏放一遍，满意了再出片，
     # 不用为了看一眼效果先等一次视频合成。
@@ -372,22 +400,25 @@ def _animate_job(jid: str, req: VideoReq):
                 message=f"准备渲染 {n} 张")
 
     # ── 1) 逐张出图 ──
-    urls, holds = [], []
+    vprof = _norm_profile(req.style_profile)
+    urls, holds, fpath = [], [], []
     for i, f in enumerate(frames):
         holds.append(max(0.05, f.hold if f.hold else req.hold))
         img = topics.render(req.scene, f.date, req.theme, req.size,
-                            title=f.title, subtitle=f.subtitle, footer=f.footer)
+                            title=f.title, subtitle=f.subtitle, footer=f.footer,
+                            style_profile=vprof, strength=req.strength)
         img = _apply_quality(img, RenderReq(scene=req.scene, date=f.date, theme=req.theme,
-                                            size=req.size, style=req.style,
-                                            style_profile=req.style_profile))
+                                            size=req.size, style=req.style))
         p = os.path.join(fdir, f"{i:04d}.png")
         img.save(p)
+        fpath.append(p)
         urls.append(f"/media/jobs/{jid}/frames/{i:04d}.png")
         jobs.update(jid, frames=list(urls), holds=holds,
                     progress=round((i + 1) / n * 0.85, 3),
                     message=f"出图 {i+1}/{n} · {str(f.date)[:10]}")
 
     # ── 2) 合成视频 ──
+    cards = {}
     if req.mode == "frames":
         # 只要图：把每帧的停留时长一并带上，前端可以照真实节奏预演
         jobs.update(jid, status="done", progress=1.0, message="全部图片已出",
@@ -399,32 +430,213 @@ def _animate_job(jid: str, req: VideoReq):
 
     jobs.update(jid, message="合成视频…", progress=0.9)
     ff = M.find_ffmpeg()
+
+    # 片头/片尾标题卡：跟正片同一套配色与字体，不是贴上去的外来图
+    imgs = list(fpath)
+    seg_holds = list(holds)
+    for key, card in (("intro", req.intro), ("outro", req.outro)):
+        if not card or not (card.text or "").strip():
+            continue
+        cimg = topics.title_card(sc, req.theme, req.size, card.text.strip(),
+                                 (card.sub or "").strip())
+        cp = os.path.join(fdir, f"card_{key}.png")
+        cimg.save(cp)
+        cards[key] = f"/media/jobs/{jid}/frames/card_{key}.png"
+        if key == "intro":
+            imgs.insert(0, cp)
+            seg_holds.insert(0, max(0.3, card.seconds))
+        else:
+            imgs.append(cp)
+            seg_holds.append(max(0.3, card.seconds))
+
+    # 水印在写片段这一步烧进去：用 PIL 画比让 ffmpeg 叠字可控（字体、描边都好办）
+    if req.watermark.strip():
+        from PIL import Image as _Im
+        for k, p in enumerate(imgs):
+            try:
+                im = _Im.open(p)
+                topics.add_watermark(im, req.watermark.strip(), req.theme).save(p)
+            except Exception as e:
+                print(f"[水印] 第 {k} 张失败：{type(e).__name__}: {e}")
+        if imgs:                      # 帧文件被改写过了，前端要强制刷新缩略图
+            jobs.update(jid, frames=[u + f"?w={int(time.time())}" for u in urls])
+
+    use_clips = req.motion != "none" or req.fade > 0.01 or bool(cards)
     errf = open(os.path.join(out_dir, "ffmpeg.log"), "w",
                 encoding="utf-8", errors="replace")
-    cmd = build_ffmpeg_cmd(ff, fdir, mp4, holds, req.fps, out_dir)
-    rc = subprocess.call(cmd, stderr=errf)
-    errf.close()
+    try:
+        if use_clips:
+            okc, whyc, want, extra = build_clip_video(
+                ff, out_dir, imgs, seg_holds, req, mp4,
+                lambda m: jobs.update(jid, message=m))
+        else:
+            cmd = build_ffmpeg_cmd(ff, fdir, mp4, holds, req.fps, out_dir)
+            rc = subprocess.call(cmd, stderr=errf)
+            want = sum(holds)
+            okc = rc == 0
+            whyc = f"ffmpeg rc={rc}"
+            extra = {}
+            if not okc:
+                errf.flush()
+                whyc = open(os.path.join(out_dir, "ffmpeg.log"),
+                            encoding="utf-8", errors="replace").read()[-300:]
+    finally:
+        errf.close()
+
     ok, why = M.verify_mp4(ff, mp4)
-    if rc != 0 or not ok:
-        jobs.update(jid, status="failed", error=f"ffmpeg rc={rc}；{why}")
+    if not okc or not ok:
+        jobs.update(jid, status="failed", error=f"{whyc}；{why}")
         return
     # 时长核对：说了几秒就该是几秒。不核的话，每帧停留这种新功能
     # 会「看起来跑通了」但片子长度不对（concat 的 duration 语义就栽在这）。
-    want = sum(holds)
     got = M.probe_duration(ff, mp4)
-    if got is not None and abs(got - want) > max(0.25, 1.5 / max(1, req.fps)):
+    if got is not None and abs(got - want) > max(0.25, 2.5 / max(1, req.fps)):
         jobs.update(jid, status="failed",
-                    error=f"片子时长对不上：各帧停留合计 {want:.2f}s，"
-                          f"实际 {got:.2f}s。stopped at ffmpeg 合成阶段。")
+                    error=f"片子时长对不上：按分镜算应为 {want:.2f}s，"
+                          f"实际 {got:.2f}s。")
         return
     secs = round(got, 2) if got is not None else round(want, 1)
-    jobs.update(jid, status="done", progress=1.0, message="完成",
-                result={"video": f"/media/jobs/{jid}/video.mp4",
-                        "frames": urls, "n_frames": len(urls),
-                        "holds": [round(h, 2) for h in holds],
-                        "seconds": secs, "want_seconds": round(want, 2),
-                        "size": req.size, "verify": why,
-                        "zip": f"/media/jobs/{jid}/frames.zip"})
+    res = {"video": f"/media/jobs/{jid}/video.mp4",
+           "frames": urls, "n_frames": len(urls),
+           "holds": [round(h, 2) for h in holds],
+           "seconds": secs, "want_seconds": round(want, 2),
+           "size": req.size, "verify": why,
+           "zip": f"/media/jobs/{jid}/frames.zip",
+           "fade": round(req.fade, 2) if req.fade > 0.01 else 0,
+           "motion": req.motion,
+           "watermark": req.watermark.strip()}
+    res.update(extra)
+    if cards:
+        res["cards"] = cards
+    jobs.update(jid, status="done", progress=1.0, message="完成", result=res)
+
+
+def _zoompan_vf(motion: str, n_frames: int, fps: int, size: str) -> str:
+    """镜头运动的滤镜串。
+
+    放大倍率按「这段总共推多少」算，不写死每帧增量 —— 写死的话
+    1 秒的帧和 3 秒的帧推的速度会不一样，节奏就乱了。
+    参数是 src/probe_motion.py 量出来的：zoompan 配 d=1 时 on 随输出帧递增。
+    """
+    zmax = 1.12
+    step = (zmax - 1.0) / max(1, n_frames)
+    xy = "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+    if motion == "in":
+        z = f"min(1+{step:.6f}*on,{zmax})"
+    else:                                     # out
+        z = f"max({zmax}-{step:.6f}*on,1.0)"
+    return f"zoompan=z='{z}':{xy}:d=1:s=1920x1080:fps={fps},format=yuv420p"
+
+
+def build_clip_video(ff: str, out_dir: str, imgs: list[str], holds: list[float],
+                     req: VideoReq, mp4: str, progress=None):
+    """先给每张图编一个片段（可带镜头运动），再拼起来（可带交叉溶解）。
+
+    为什么不直接对整条图片序列上滤镜：zoompan 是「对一段连续画面缓慢推近」，
+    套在整条序列上会从头到尾一直推，而不是每张推一次。
+    所以必须先切段。
+
+    返回 (ok, why, 期望时长, 额外信息)
+    """
+    import subprocess
+
+    fps = max(1, int(req.fps))
+    n = len(imgs)
+    cdir = os.path.join(out_dir, "clips")
+    os.makedirs(cdir, exist_ok=True)
+    segs, durs = [], []
+
+    for i, p in enumerate(imgs):
+        nf = max(1, round(max(0.05, holds[i]) * fps))
+        seg = os.path.join(cdir, f"{i:04d}.mp4")
+        # 片头/片尾卡不做推拉：它是静态标题，动了反而晃
+        is_card = os.path.basename(p).startswith("card_")
+        motion = "none" if is_card else req.motion
+        if motion == "none":
+            vf = "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p"
+        else:
+            vf = _zoompan_vf(motion, nf, fps, req.size)
+        cmd = [ff, "-y", "-loglevel", "error", "-loop", "1", "-framerate", str(fps),
+               "-i", p, "-frames:v", str(nf), "-vf", vf,
+               "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+               "-pix_fmt", "yuv420p", seg]
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            return False, f"片段 {i} 编码失败：{(r.stderr or '').strip()[:200]}", 0, {}
+        segs.append(seg)
+        durs.append(nf / fps)
+        if progress:
+            progress(f"编码片段 {i+1}/{n}")
+
+    total = sum(durs)
+    D = float(req.fade or 0.0)
+    if D > 0.01:
+        # 转场不能长到把短帧整个吃掉，否则两帧完全重叠、画面会闪
+        D = min(D, 0.45 * min(durs))
+
+    if D <= 0.01:
+        lst = os.path.join(out_dir, "clips.txt")
+        with open(lst, "w", encoding="utf-8") as fh:
+            for s in segs:
+                fh.write(f"file '{s.replace(chr(92), '/')}'\n")
+        cmd = [ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+               "-i", lst, "-c", "copy", "-movflags", "+faststart", mp4]
+        r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            # -c copy 偶发因参数不一致失败，退回重编码
+            cmd[cmd.index("-c") + 1] = "libx264"
+            cmd.insert(cmd.index("libx264") + 1, "-crf")
+            cmd.insert(cmd.index("-crf") + 1, "18")
+            r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+        if r.returncode != 0:
+            return False, f"拼接失败：{(r.stderr or '').strip()[:200]}", 0, {}
+        return True, "ok", total, {"transition": "hard",
+                                   "segments": n, "fade": 0}
+
+    # 交叉溶解：offset = 前缀和 - (k+1)*D，实测总长 = 总时长 - D*(段数-1)
+    args = []
+    for s in segs:
+        args += ["-i", s]
+    parts, cur, acc = [], "[0:v]", 0.0
+    for k in range(1, n):
+        acc += durs[k - 1]
+        off = max(0.0, acc - k * D)
+        tag = f"[x{k}]"
+        parts.append(f"{cur}[{k}:v]xfade=transition=fade:duration={D:.3f}"
+                     f":offset={off:.3f}{tag}")
+        cur = tag
+    fc = ";".join(parts)
+    # Windows 命令行有 32767 字符上限，超了就退回硬切并说清楚，别抛一个看不懂的错
+    if len(fc) > 24000:
+        return _fallback_hard_cut(ff, out_dir, segs, mp4, total,
+                                  "帧数太多，交叉溶解的滤镜串超长，已退回硬切")
+    cmd = [ff, "-y", "-loglevel", "error"] + args + [
+        "-filter_complex", fc, "-map", cur,
+        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4]
+    r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        return _fallback_hard_cut(ff, out_dir, segs, mp4, total,
+                                  f"交叉溶解失败（{(r.stderr or '').strip()[:120]}），已退回硬切")
+    return True, "ok", total - D * (n - 1), {"transition": "fade",
+                                             "segments": n, "fade": round(D, 2)}
+
+
+def _fallback_hard_cut(ff, out_dir, segs, mp4, total, note):
+    import subprocess
+    lst = os.path.join(out_dir, "clips.txt")
+    with open(lst, "w", encoding="utf-8") as fh:
+        for s in segs:
+            fh.write(f"file '{s.replace(chr(92), '/')}'\n")
+    r = subprocess.run([ff, "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
+                        "-i", lst, "-c:v", "libx264", "-preset", "medium",
+                        "-crf", "18", "-pix_fmt", "yuv420p",
+                        "-movflags", "+faststart", mp4],
+                       capture_output=True, text=True, errors="replace")
+    if r.returncode != 0:
+        return False, f"退回硬切也失败：{(r.stderr or '').strip()[:200]}", 0, {}
+    return True, "ok", total, {"transition": "hard", "segments": len(segs),
+                               "fade": 0, "note": note}
 
 
 def plan_holds(holds: list[float], fps: int) -> list[int]:
