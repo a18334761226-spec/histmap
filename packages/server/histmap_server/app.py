@@ -38,7 +38,12 @@ from pydantic import BaseModel
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
-for p in (os.path.join(ROOT, "packages", "core"), os.path.join(ROOT, "src"), HERE):
+PKG_PARENT = os.path.dirname(HERE)              # packages/server
+# 这四行是「零配置启动」的关键：把 packages/server 也放进来，
+# `python packages\server\histmap_server\app.py` 才能 import histmap_server。
+# 少了它就必须先 set PYTHONPATH，而那正是新用户第一次跑必踩的一脚。
+for p in (os.path.join(ROOT, "packages", "core"), os.path.join(ROOT, "src"),
+          PKG_PARENT, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -769,6 +774,10 @@ def index():
 
 if __name__ == "__main__":
     import uvicorn
+
+    port = int(os.environ.get("PORT") or 8810)
+    url = f"http://127.0.0.1:{port}"
+
     # 启动自检：几何过期就在日志里点名，别让人对着旧图排查半天
     for s in topics.stale_report():
         if "error" in s:
@@ -776,5 +785,23 @@ if __name__ == "__main__":
         else:
             print(f"[自检] {s['topic']} 有 {len(s['stale_years'])} 年的几何是旧的"
                   f"（{s['stale_years']}）。重跑：{s['fix']}")
-    port = int(os.environ.get("PORT") or 8810)
+    print(f"\n  工作台已启动：{url}\n  按 Ctrl+C 停止\n")
+
+    # --open 才开浏览器：脚本里后台跑的时候不需要弹出窗口来打扰
+    if "--open" in sys.argv:
+        import threading
+        import webbrowser
+
+        def _open():
+            # 等 uvicorn 真正开始监听再开，否则浏览器会先撞上一个打不开的地址
+            for _ in range(40):
+                try:
+                    urllib.request.urlopen(url + "/api/health", timeout=1).read()
+                    break
+                except Exception:
+                    time.sleep(0.25)
+            webbrowser.open(url)
+
+        threading.Thread(target=_open, daemon=True).start()
+
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")

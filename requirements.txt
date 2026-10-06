@@ -1,0 +1,25 @@
+# histmap 运行依赖
+#
+# 装法：python -m pip install -r requirements.txt
+#
+# 说明：这个项目的图是**代码画的**，不调图像模型。
+# 下面这些全是确定性计算的依赖，没有一个是大模型 SDK。
+
+# 渲染与几何
+pillow>=10.0            # 画图
+numpy>=1.24             # 后期质感、像素运算
+shapely>=2.0            # 县界合并成州/路的面
+zhconv>=1.4             # 繁简归一：古籍文本要跟简体地名表对得上
+
+# 视频合成
+imageio-ffmpeg>=0.4     # 自带 ffmpeg 单文件，不用自己装
+pyyaml>=6.0
+
+# Web 服务
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9 # 参考图上传用的 multipart 解析
+
+# 可选：只有「对话改参数」会用到，用标准库 urllib 调，不需要 openai/langchain SDK
+# 想把「风格化出图」接上外部图像模型时才需要下面这个，默认不用
+# httpx>=0.27

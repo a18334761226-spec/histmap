@@ -60,14 +60,28 @@
 
 ## 快速开始
 
+**Windows 上想直接看效果：双击 `启动工作台.cmd`**（自动装依赖、起服务、开浏览器）。
+
+手动跑：
+
 ```bash
 git clone <repo> && cd history-map
-pip install pillow numpy pyyaml imageio-ffmpeg shapely zhconv fastapi uvicorn python-multipart httpx
+python -m pip install -r requirements.txt
 
-# ── Web 应用（推荐先跑这个，clone 下来就能用）──
+# ── Web 工作台（推荐先跑这个，clone 下来就能用）──
+python packages/server/histmap_server/app.py --open   # 打开 http://127.0.0.1:8810
+python src/smoke_api.py --video                       # 全线自检：每个接口都真跑一遍
+
+# 不需要设 PYTHONPATH。app.py 自己会把 packages/core、src、packages/server
+# 加进 sys.path —— 少一步环境变量，就少一个新用户第一次必踩的坑。
+```
+
+演示页是纯静态的，直接双击 `site/index.html` 即可（页内图片与视频都是真实运行结果）。
+
+**只有在重跑数据管线时才需要设环境变量：**
+
+```bash
 set PYTHONPATH=packages\server;packages\core;src
-python -m histmap_server.app          # 打开 http://127.0.0.1:8810
-python src/smoke_api.py --video       # 全线自检：每个接口都真跑一遍
 
 # 0. 拉数据（可再下载的大件不进仓库；clone 后无需执行也能跑唐宋）
 set HTTPS_PROXY=http://127.0.0.1:7897     # 国内直连 GitHub 很慢
@@ -293,11 +307,13 @@ docs/                          设计稿与实测记录
 把引擎包成一个能用的应用。**图的形状是代码画的，出图不需要任何模型 Key。**
 
 ```bash
-pip install fastapi uvicorn python-multipart
-set PYTHONPATH=packages\server;packages\core;src
-python -m histmap_server.app          # 打开 http://127.0.0.1:8810
-python src/smoke_api.py --video       # 把每个接口真跑一遍
+python -m pip install -r requirements.txt
+python packages/server/histmap_server/app.py --open   # 打开 http://127.0.0.1:8810
+python src/smoke_api.py --video                       # 把每个接口真跑一遍（61 项）
 ```
+
+或者 Windows 上直接双击 `启动工作台.cmd`：它会检查依赖、装缺的、起服务、开浏览器。
+**不需要设 PYTHONPATH** —— `app.py` 自己会把三处路径加进 `sys.path`。
 
 ### 界面长什么样
 
