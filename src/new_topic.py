@@ -309,9 +309,41 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
     # ── 4) 真构建一遍，把几何算出来（不构建就没图可出）──
     if install:
         _rebuild(tid, entry, report, quiet)
+        _fit_bbox_after(tid, report, quiet)
     else:
         report["warnings"].append("未加 --install，几何没构建；加 --install 才会真正可用")
     return report
+
+
+def _fit_bbox_after(tid: str, report: dict, quiet: bool) -> None:
+    """几何算完立刻校准取景框。
+
+    必须自动化：模型给的 bbox 实测经常大错 —— 德意志统一只框住德国
+    （法奥丹全被裁，数据占比 513%）、法国大革命 390%、明清算出来只有 56%
+    （大片空白）。这些都不是我事后发现才修的，而是**每个自动生成的题材都会犯**。
+    """
+    try:
+        import fit_bbox
+        doc = json.load(open(TOPICS, encoding="utf-8"))
+        for t in doc["topics"]:
+            if t.get("id") != tid:
+                continue
+            years = [int(y) for y in (t.get("years") or [])]
+            if not years:
+                return
+            old = t.get("bbox")
+            new = fit_bbox.fit(tid, years)
+            if new and old != new:
+                t["bbox"] = new
+                json.dump(doc, open(TOPICS, "w", encoding="utf-8"),
+                          ensure_ascii=False, indent=2)
+                report["bbox"] = new
+                report["bbox_note"] = f"取景框由几何算出（模型给的 {old} 会裁掉内容）"
+                if not quiet:
+                    print(f"  取景框校准 {old} -> {new}")
+            return
+    except Exception as e:
+        report["warnings"].append(f"取景框校准失败：{type(e).__name__}: {e}")
 
 
 def _slug(s: str) -> str:

@@ -96,6 +96,9 @@ header{height:52px;display:flex;align-items:center;gap:16px;padding:0 14px;
 .tab.on{background:var(--active);color:var(--text);font-weight:600;box-shadow:var(--sh-1)}
 .tab i{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.35;flex:none}
 .tab.on i{opacity:1;background:var(--accent)}
+/* 常驻的「+ 别的题材」：虚线边，一眼看出是「这里能加东西」 */
+.tab.add{border:1px dashed var(--line-2);color:var(--text-2);margin-left:2px}
+.tab.add:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
 .tab.off{color:var(--text-3);text-decoration:line-through;text-decoration-color:var(--err)}
 .tab.off em{color:var(--err)}
 .tab em{font-style:normal;font-size:10.5px;color:var(--text-3);font-family:var(--mono)}
@@ -548,7 +551,7 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
     <div class="f"><label>Base URL</label><input type="text" id="sBase"></div>
     <div class="f"><label>API Key</label><input type="text" id="sKey" placeholder="sk-…" autocomplete="off"></div>
     <div class="f"><label>对话模型</label><input type="text" id="sChat"
-      placeholder="Qwen/Qwen2.5-72B-Instruct"></div>
+      placeholder="deepseek-ai/DeepSeek-V4-Flash"></div>
     <div class="note">这个工具不调用任何图像模型来画地图：图是代码画的，参考图风格是**量**出来的
       （纸张色/纹理/颗粒/暗角），不是让模型「照着画」。
       图像模型只用来生成**没有语义的材质**（纸纹、做旧、边框），生成完由代码把地图合成上去。
@@ -694,13 +697,16 @@ async function boot(){
 
 /* ── 题材 ─────────────────────────────────────────────────────────── */
 function tabs(){
+  // 题材页签后面**常驻一个「+」** —— 想找别的题材的人会往这排看，
+  // 而不是去看顶栏角落（早先只有顶栏那个小按钮，等于藏起来了）。
   $('#tabs').innerHTML = SCENES.map(s => {
     const off = s.ready === false;
     return `<button class="tab${s.id === st.scene ? ' on' : ''}${off ? ' off' : ''}"
        data-id="${esc(s.id)}" ${off ? `title="缺数据：${esc(s.missing)}"` : ''}>
        <i></i>${esc(s.title)}<em>${off ? '缺数据' : (s.dates||[]).length}</em></button>`;
-  }).join('');
-  $$('#tabs .tab').forEach(b => b.onclick = () => {
+  }).join('') + `<button class="tab add" id="tabAdd" title="这个列表里没有你要的？让系统自己建一个">
+       ＋ 别的题材</button>`;
+  $$('#tabs .tab[data-id]').forEach(b => b.onclick = () => {
     if (b.dataset.id === st.scene) return;
     st.scene = b.dataset.id;
     const s = scene();
@@ -708,6 +714,7 @@ function tabs(){
     st.size = s.default_size || '16x9';
     tabs(); syncParams(); fillRange(); rebuild(); renderOne();
   });
+  $('#tabAdd').onclick = openNew;
   // 有题材缺数据就直说，别等用户点开图看到 500
   const off = SCENES.filter(s => s.ready === false);
   if (off.length){
@@ -1369,10 +1376,11 @@ function openJobs(){ $('#drawer').classList.add('on'); $('#scrim').classList.add
 function closeJobs(){ $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); }
 
 /* ── 新建题材：一句话 → 草案 → 建出来 ─────────────────────────────── */
-$('#btnNew').onclick = () => {
+function openNew(){
   $('#newMask').classList.add('on');
-  $('#nwAsk').focus();
-};
+  setTimeout(() => $('#nwAsk').focus(), 50);   // 等浮层显示出来再聚焦
+}
+$('#btnNew').onclick = openNew;
 $('#nwClose').onclick = () => $('#newMask').classList.remove('on');
 $('#newMask').onclick = e => { if (e.target.id === 'newMask') $('#newMask').classList.remove('on'); };
 

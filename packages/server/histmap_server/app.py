@@ -29,7 +29,8 @@ import time
 import urllib.request
 import zipfile
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import (FastAPI, File, Header, HTTPException, Request,
+                     UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse,
                                Response)
@@ -66,9 +67,17 @@ MODELS = {
          "base": "https://api.siliconflow.cn/v1"},
         {"id": "Qwen/Qwen2.5-32B-Instruct", "label": "Qwen2.5-32B（更会听懂话）",
          "base": "https://api.siliconflow.cn/v1"},
-        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B（实测可用）",
+        {"id": "deepseek-ai/DeepSeek-V4-Flash", "label": "DeepSeek V4 Flash（快）",
          "base": "https://api.siliconflow.cn/v1"},
-        {"id": "deepseek-ai/DeepSeek-V3", "label": "DeepSeek-V3",
+        {"id": "deepseek-ai/DeepSeek-V4-Pro", "label": "DeepSeek V4 Pro（强）",
+         "base": "https://api.siliconflow.cn/v1"},
+        {"id": "deepseek-ai/DeepSeek-V3.2", "label": "DeepSeek V3.2",
+         "base": "https://api.siliconflow.cn/v1"},
+        {"id": "deepseek-ai/DeepSeek-R1", "label": "DeepSeek R1（推理）",
+         "base": "https://api.siliconflow.cn/v1"},
+        # 注：DeepSeek 命名里没有「4.1」，只有 V4-Flash / V4-Pro / V3.2 / R1。
+        # 上面这些 id 是本机从 /v1/models 实际查出来的，不是猜的。
+        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B（实测可用）",
          "base": "https://api.siliconflow.cn/v1"},
         # 火山方舟（豆包）：模型名要填**接入点 ID**（ep-…）或模型 ID，
         # 在方舟控制台「在线推理 → 接入点」里拿。
@@ -1027,26 +1036,34 @@ def _reload_topics():
 
 
 @app.post("/api/topic/draft")
-def api_topic_draft(req: TopicDraftReq,
+def api_topic_draft(req: TopicDraftReq, request: Request,
                     x_api_key: str | None = Header(None, alias="X-Api-Key"),
                     x_base_url: str | None = Header(None, alias="X-Base-Url")):
     """把一句话变成题材规格草案。
 
     只出草案不落盘 —— 用户要先看一眼模型打算怎么画，再决定要不要建。
-    需要 Key：这一步是唯一用到模型的地方（选数据源、分配归属）。
     """
     import new_topic as NT
     if not req.ask.strip():
         raise HTTPException(400, "说一句你想要什么题材")
-    # 服务端**不**回退去读本站 .env 的 key。否则任何访客的请求都在烧站长的额度，
-    # 而界面上还写着「未填 Key」—— 那是骗人的。想开放就显式设这个环境变量。
-    allow_env = os.environ.get("HISTMAP_ALLOW_SERVER_KEY") == "1"
+    # 允许服务端用自己 .env 里的 key，**仅限本机访问**：
+    #   · 你自己电脑上打开 → 本机请求 → 直接用 .env 的 key，功能开箱可用
+    #   · 部署到公网 → 访客来自别的 IP → 必须带自己的 key，
+    #     否则每个访客都在烧站长的额度
+    # 想对公网也开放就显式设 HISTMAP_ALLOW_SERVER_KEY=1。
+    host = (request.client.host if request.client else "") or ""
+    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    allow_env = is_local or os.environ.get("HISTMAP_ALLOW_SERVER_KEY") == "1"
     try:
         spec = NT.draft(req.ask.strip(), key=x_api_key or "",
                         model=req.model or "Qwen/Qwen2.5-72B-Instruct",
                         verbose=False, allow_env_key=allow_env)
     except SystemExit as e:
-        raise HTTPException(401 if "Key" in str(e) else 400, str(e))
+        msg = str(e)
+        if "Key" in msg:
+            msg = ("起草要模型 Key。你可以：①右上角「设置」里填一个（本机使用）；"
+                   "②或在本机的 .env 里写 SILICONFLOW_API_KEY=…（服务端会自动用）")
+        raise HTTPException(401 if "Key" in str(e) else 400, msg)
     except Exception as e:
         raise HTTPException(500, f"起草失败：{type(e).__name__}: {e}")
     # 顺带把「这份草案能不能真的建出来」预判一下，省得用户点了才发现对不上
