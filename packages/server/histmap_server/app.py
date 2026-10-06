@@ -63,34 +63,40 @@ MODELS = {
     # 挑模型看的是**出控制表的质量**（年份齐不齐、单元名对不对），
     # 不是「谁画得好看」—— 图是代码画的，模型不碰像素。
     "chat": [
-        {"id": "Qwen/Qwen2.5-7B-Instruct", "label": "Qwen2.5-7B（快、便宜）",
-         "base": "https://api.siliconflow.cn/v1"},
-        {"id": "Qwen/Qwen2.5-32B-Instruct", "label": "Qwen2.5-32B（更会听懂话）",
-         "base": "https://api.siliconflow.cn/v1"},
+        # svc 是服务商名，界面按它分组。不能拿模型标签当服务名 ——
+        # 那样下拉框的分组会显示成「Qwen2.5-7B」而不是「硅基流动」（踩过）。
+        # ── 硅基流动（国内直连，一个 key 用多家模型）──
         {"id": "deepseek-ai/DeepSeek-V4-Flash", "label": "DeepSeek V4 Flash（快）",
-         "base": "https://api.siliconflow.cn/v1"},
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
         {"id": "deepseek-ai/DeepSeek-V4-Pro", "label": "DeepSeek V4 Pro（强）",
-         "base": "https://api.siliconflow.cn/v1"},
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
         {"id": "deepseek-ai/DeepSeek-V3.2", "label": "DeepSeek V3.2",
-         "base": "https://api.siliconflow.cn/v1"},
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
         {"id": "deepseek-ai/DeepSeek-R1", "label": "DeepSeek R1（推理）",
-         "base": "https://api.siliconflow.cn/v1"},
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
+        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B（实测可用）",
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
+        {"id": "Qwen/Qwen2.5-7B-Instruct", "label": "Qwen2.5-7B（快、便宜）",
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
         # 注：DeepSeek 命名里没有「4.1」，只有 V4-Flash / V4-Pro / V3.2 / R1。
         # 上面这些 id 是本机从 /v1/models 实际查出来的，不是猜的。
-        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B（实测可用）",
-         "base": "https://api.siliconflow.cn/v1"},
-        # 火山方舟（豆包）：模型名要填**接入点 ID**（ep-…）或模型 ID，
-        # 在方舟控制台「在线推理 → 接入点」里拿。
-        {"id": "doubao-seed-1-6-250615", "label": "豆包 Seed 1.6（火山方舟）",
-         "base": "https://ark.cn-beijing.volces.com/api/v3"},
-        {"id": "doubao-1-5-pro-32k-250115", "label": "豆包 1.5 Pro 32k（火山方舟）",
-         "base": "https://ark.cn-beijing.volces.com/api/v3"},
-        # 阿里百炼（通义千问）
-        {"id": "qwen-plus", "label": "通义千问 plus（阿里百炼）",
-         "base": "https://dashscope.aliyuncs.com/compatible-mode/v1"},
-        # 智谱
-        {"id": "glm-4-plus", "label": "GLM-4-Plus（智谱）",
-         "base": "https://open.bigmodel.cn/api/paas/v4"},
+        # ── 火山方舟（豆包）──
+        # 模型名要填控制台里的**接入点 ID**（ep-…）或模型 ID。
+        {"id": "doubao-seed-1-6-250615", "label": "豆包 Seed 1.6",
+         "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
+        {"id": "doubao-1-5-pro-32k-250115", "label": "豆包 1.5 Pro 32k",
+         "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
+        # ── 阿里百炼（通义千问）──
+        {"id": "qwen-plus", "label": "通义千问 plus",
+         "base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "svc": "阿里百炼"},
+        {"id": "qwen-max", "label": "通义千问 max",
+         "base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "svc": "阿里百炼"},
+        # ── 智谱 ──
+        {"id": "glm-4-plus", "label": "GLM-4-Plus",
+         "base": "https://open.bigmodel.cn/api/paas/v4", "svc": "智谱"},
+        # ── 魔搭 ──
+        {"id": "Qwen/Qwen2.5-72B-Instruct", "label": "Qwen2.5-72B",
+         "base": "https://api-inference.modelscope.cn/v1", "svc": "魔搭"},
     ],
     "image_edit": [
         {"id": "Qwen/Qwen-Image-Edit-2509", "label": "Qwen-Image-Edit-2509",

@@ -536,27 +536,23 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
 </div>
 
 <div class="mask" id="mask">
-  <div class="modal">
+  <div class="modal" style="width:min(560px,94vw)">
     <h2>设置</h2>
     <p class="s">Key 只存在这台机器的浏览器里。不上传、不写盘、不进日志。</p>
+
+    <div class="f"><label>对话模型</label>
+      <select id="sChatSel"></select></div>
+    <div class="f" id="sChatCustomRow" style="display:none">
+      <label>模型名</label>
+      <input type="text" id="sChat" placeholder="手填模型 ID，如 ep-2026xxxx"></div>
+
     <div class="f"><label>API 服务</label>
-      <select id="sPreset">
-        <option value="https://api.siliconflow.cn/v1">硅基流动（国内直连）</option>
-        <option value="https://ark.cn-beijing.volces.com/api/v3">火山方舟 · 豆包</option>
-        <option value="https://dashscope.aliyuncs.com/compatible-mode/v1">阿里百炼 · 通义千问</option>
-        <option value="https://open.bigmodel.cn/api/paas/v4">智谱 · GLM</option>
-        <option value="https://api-inference.modelscope.cn/v1">魔搭 ModelScope</option>
-        <option value="__custom__">自定义</option>
-      </select></div>
+      <select id="sPreset"></select></div>
     <div class="f"><label>Base URL</label><input type="text" id="sBase"></div>
-    <div class="f"><label>API Key</label><input type="text" id="sKey" placeholder="sk-…" autocomplete="off"></div>
-    <div class="f"><label>对话模型</label><input type="text" id="sChat"
-      placeholder="deepseek-ai/DeepSeek-V4-Flash"></div>
-    <div class="note">这个工具不调用任何图像模型来画地图：图是代码画的，参考图风格是**量**出来的
-      （纸张色/纹理/颗粒/暗角），不是让模型「照着画」。
-      图像模型只用来生成**没有语义的材质**（纸纹、做旧、边框），生成完由代码把地图合成上去。
-      <br><br>换模型只影响「起草题材」的质量 —— 年份齐不齐、单元名对不对。
-      豆包的模型名要填火山方舟控制台里的**接入点 ID**（ep-…）。</div>
+    <div class="f"><label>API Key</label>
+      <input type="text" id="sKey" placeholder="sk-…" autocomplete="off"></div>
+
+    <div class="note" id="sNote"></div>
     <div class="acts">
       <button class="btn gh" id="sClear">清空</button>
       <button class="btn pri" id="sSave">保存</button>
@@ -692,6 +688,10 @@ async function boot(){
   st.size = SCENES[0].default_size || '16x9';
   try { STYLES = ((await (await fetch('/api/styles')).json()).presets) || []; }
   catch(e){ STYLES = [{id:'none', label:'不加质感', desc:''}]; }
+  // 模型清单要先拿到，设置面板才能把可选项列出来
+  try { MODELS = await (await fetch('/api/models')).json(); } catch(e){}
+  if (!MODELS || !(MODELS.chat || []).length) MODELS = {chat: [], image_edit: []};
+  fillSettings();
   tabs(); styles(); syncParams(); syncSegs(); fillRange(); rebuild(); loadCfg(); jobCnt();
 }
 
@@ -1294,26 +1294,117 @@ function restore(job){
 }
 
 /* ── 设置 ─────────────────────────────────────────────────────────── */
+/* 模型清单由服务端 /api/models 给，界面**列出来让人选**。
+   之前这里是个纯文本输入框 —— 我把模型加进了接口，界面上却看不到，
+   用户只能自己手打模型名，自然会觉得「没有 DeepSeek」。 */
+let MODELS = {chat: [], image_edit: []};
+const CUSTOM = '__custom__';
+
+function services(){
+  // 服务列表从模型清单里去重得到，不在这里另写一份（否则必然对不上）
+  const seen = new Map();
+  MODELS.chat.forEach(m => { if (m.base && !seen.has(m.base)) seen.set(m.base, m.base); });
+  return [...seen.keys()];
+}
+
+function fillSettings(){
+  const svc = services();
+  // 服务名用数据里的 svc 字段。拿模型标签当服务名的话，
+  // 分组会显示成「Qwen2.5-7B」而不是「硅基流动」（踩过）。
+  $('#sPreset').innerHTML = svc.map(b => {
+    const m = MODELS.chat.find(x => x.base === b) || {};
+    return `<option value="${esc(b)}">${esc(m.svc || b)}</option>`;
+  }).join('') + `<option value="${CUSTOM}">自定义（自己填 Base URL）</option>`;
+
+  // 模型下拉：按服务分组
+  const groups = new Map();
+  MODELS.chat.forEach(m => {
+    const b = m.base || '';
+    if (!groups.has(b)) groups.set(b, []);
+    groups.get(b).push(m);
+  });
+  let html = '';
+  for (const [b, list] of groups){
+    const head = (MODELS.chat.find(m => m.base === b) || {}).svc || b;
+    html += `<optgroup label="${esc(head)}">`;
+    list.forEach(m => { html += `<option value="${esc(m.id)}" data-base="${esc(b)}">${
+      esc(m.label)}　${esc(m.id)}</option>`; });
+    html += '</optgroup>';
+  }
+  html += `<option value="${CUSTOM}">自定义（手填模型 ID）</option>`;
+  $('#sChatSel').innerHTML = html;
+}
+
+function showModelNote(){
+  const id = $('#sChatSel').value;
+  const m = MODELS.chat.find(x => x.id === id);
+  const base = m ? m.base : $('#sBase').value.trim();
+  const ark = (base || '').includes('volces.com');
+  $('#sNote').innerHTML =
+    `这个工具**不用图像模型画地图** —— 图是代码画的，参考图风格是**量**出来的。
+     换模型只影响「起草题材」的质量（年份齐不齐、单元名对不对）。` +
+    (ark ? `<br><br><b>火山方舟（豆包）要用控制台里的接入点 ID（<code>ep-…</code>），
+      不是「豆包」这种显示名。</b>选「自定义」手填。` : '');
+}
+
 function loadCfg(){
   $('#sBase').value = cfg.base || ''; $('#sKey').value = cfg.key || '';
-  $('#sChat').value = cfg.chat || '';
-  const known = ['https://api.siliconflow.cn/v1',
-                 'https://ark.cn-beijing.volces.com/api/v3',
-                 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-                 'https://open.bigmodel.cn/api/paas/v4',
-                 'https://api-inference.modelscope.cn/v1'];
-  $('#sPreset').value = known.includes(cfg.base) ? cfg.base : (cfg.base ? '__custom__' : known[0]);
+  const known = services();
+  const wantBase = cfg.base || known[0] || '';
+  $('#sPreset').value = known.includes(wantBase) ? wantBase : CUSTOM;
+  // 模型：配置里存过就选中它，否则选该服务下的第一个
+  const ids = MODELS.chat.map(m => m.id);
+  if (cfg.chat && ids.includes(cfg.chat)){
+    $('#sChatSel').value = cfg.chat;
+    $('#sChatCustomRow').style.display = 'none';
+  } else if (cfg.chat){
+    $('#sChatSel').value = CUSTOM;
+    $('#sChat').value = cfg.chat;
+    $('#sChatCustomRow').style.display = '';
+  } else {
+    const first = MODELS.chat.find(m => m.base === wantBase) || MODELS.chat[0];
+    if (first) $('#sChatSel').value = first.id;
+    $('#sChatCustomRow').style.display = 'none';
+  }
   const has = !!cfg.key;
   $('#keyPill').classList.toggle('on', has);
   $('#keyText').textContent = has ? '已填 Key' : '未填 Key';
+  showModelNote();
 }
+
+$('#sChatSel').onchange = () => {
+  if ($('#sChatSel').value === CUSTOM){
+    $('#sChatCustomRow').style.display = '';
+    $('#sChat').focus();
+  } else {
+    $('#sChatCustomRow').style.display = 'none';
+    const m = MODELS.chat.find(x => x.id === $('#sChatSel').value);
+    if (m && m.base){ $('#sBase').value = m.base; $('#sPreset').value = m.base; }
+  }
+  showModelNote();
+};
 $('#sPreset').onchange = () => {
-  if ($('#sPreset').value !== '__custom__') $('#sBase').value = $('#sPreset').value; };
+  const v = $('#sPreset').value;
+  if (v === CUSTOM){ $('#sBase').focus(); return; }
+  $('#sBase').value = v;
+  // 换了服务，若当前模型不属于这家，自动挑这家下的第一个
+  const cur = MODELS.chat.find(m => m.id === $('#sChatSel').value);
+  if (!cur || cur.base !== v){
+    const first = MODELS.chat.find(m => m.base === v);
+    if (first) $('#sChatSel').value = first.id;
+  }
+  showModelNote();
+};
+function pickedModel(){
+  const v = $('#sChatSel').value;
+  return v === CUSTOM ? $('#sChat').value.trim() : v;
+}
 $('#sSave').onclick = () => {
   const nx = {base:$('#sBase').value.trim(), key:$('#sKey').value.trim(),
-              chat:$('#sChat').value.trim()};
+              chat: pickedModel()};
   localStorage.setItem('histmap.cfg', JSON.stringify(nx)); Object.assign(cfg, nx);
-  $('#mask').classList.remove('on'); loadCfg(); toast('已保存到本机浏览器'); };
+  $('#mask').classList.remove('on'); loadCfg();
+  toast(nx.chat ? `已保存：${nx.chat}` : '已保存'); };
 $('#sClear').onclick = () => {
   localStorage.removeItem('histmap.cfg');
   ['base','key','chat'].forEach(k => delete cfg[k]); loadCfg(); toast('已清空'); };
