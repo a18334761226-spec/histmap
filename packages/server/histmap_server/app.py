@@ -294,6 +294,11 @@ class VideoReq(BaseModel):
     size: str = "16x9"
     style: str = "none"
     style_profile: dict | None = None
+    # 风格强度：0 = 用题材自带配色，1 = 完全换成参考图的色彩世界。
+    # 这个字段一度漏了 —— 渲染路径里写了 strength=req.strength，
+    # 而 VideoReq 上没有它，于是**所有出片任务**都 AttributeError 挂掉。
+    # 单张出图那条路是好的，所以只在「出片」时才暴露。
+    strength: float = 1.0
     fps: int = 24
     hold: float = 0.30                        # 每帧默认停留秒数
     # 转场：0 = 硬切（快，走 concat）；>0 = 交叉溶解秒数。
