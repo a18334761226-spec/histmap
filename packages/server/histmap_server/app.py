@@ -494,14 +494,19 @@ def api_render_model(req: ModelImageReq, request: Request,
                 ref_for_model = base_path
                 print(f"[生图] 抹字失败，用原图：{type(e).__name__}: {e}")
 
-    # 默认提示词：**只描述质感，不提地图内容** —— 提了它就会去重画内容。
-    # 并且**明确禁止画字**：底图已经把字抹掉了，这里再说一句，
-    # 免得它自己"脑补"出标题和地名（脑补出来的就是形近错字）。
+    # 默认提示词。
+    # ⚠️ 这里必须**明确要求保住输入的几何**。原来我只写了"不要画字"，
+    #    等于**放任它重画** —— 它就去重画了，而且用的是自己训练分布里的先验
+    #    （全是现代地图），于是画出现代海岸线和省界，标题却还写着 807 年。
+    #    加上这句不保证一定守住（实测 NCC 仍会掉），但不加就是主动邀请它重画。
     prompt = (req.prompt or "").strip() or (
-        "An antique hand-drawn historical atlas map. Aged parchment paper with "
-        "visible fibre grain and soft foxing stains, muted earthy low-saturation "
-        "colours, fine ink linework, subtle vignette, warm toned, printed in the "
-        "style of a 19th-century atlas plate. "
+        "Keep the input image's geography, coastlines, borders, region shapes "
+        "and their exact positions completely unchanged. Do not redraw, move, "
+        "add or remove any region, line or shape. Only change the MATERIAL and "
+        "TONE: aged parchment paper, visible fibre grain, soft foxing stains, "
+        "muted earthy low-saturation colours, warm toned, fine engraved "
+        "hatching texture, subtle vignette, printed like a 19th-century atlas "
+        "plate. "
         "Do NOT draw any text, letters, numbers, characters or labels. "
         "Leave every empty area completely empty.")
     out_path = os.path.join(MEDIA, f"modelgen_{req.scene}_{stamp}.png")
@@ -682,6 +687,18 @@ def api_style_texture(req: StyleTextureReq, request: Request,
                     temperature=0.3)
     out_path = os.path.join(MEDIA, f"styled_{req.scene}_{int(time.time()*1000)}.png")
     ref = req.ref_path or base           # 没给参考图就拿底图当参考（只取质感）
+    # 这一步要的是**纯纸**，不是地图。所以提示词里必须只提纸，
+    # 一个"map / atlas / chart"之类的词都不能有 —— 提了就是在邀请它画地图。
+    # 原来界面留空时会走视觉模型去"看图写提示词"，而它看的那张图是**地图**，
+    # 写出来的提示词很容易带上"historical map"这种词，把模型引到画地图上去。
+    # 所以这里给一个只讲纸的默认值；调用方明确给了 image_prompt 才用它的。
+    paper_prompt = (req.image_prompt or "").strip() or (
+        "A completely blank sheet of aged parchment paper, filling the whole "
+        "frame edge to edge. An empty writing surface with nothing on it. "
+        "Warm ivory to light tan tone, pronounced fibre grain, small dark "
+        "specks, faint mottling, a few soft water stains, slightly darker and "
+        "aged along the extreme outer edges. Even flat lighting across the "
+        "whole sheet.")
     # 图像模型的地址：调用方给了就用；没给就从清单里按模型名反查
     # 图像模型的地址：调用方给了就用；没给就按模型名从清单反查；
     # 再不行就用服务端配置那一家的地址（**不再无脑兜底到硅基流动** ——
@@ -710,7 +727,7 @@ def api_style_texture(req: StyleTextureReq, request: Request,
                                mode=req.mode, verbose=False,
                                # 调用方给过提示词就用它，不再问一次视觉模型：
                                # 更省更快，也避免用错家的视觉模型名。
-                               prompt_override=(req.image_prompt or "").strip())
+                               prompt_override=paper_prompt)
     except Exception as e:
         raise HTTPException(500, f"生成失败：{type(e).__name__}: {str(e)[:300]}")
     styled = r.get("styled_path") or ""
