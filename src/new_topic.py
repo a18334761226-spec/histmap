@@ -156,6 +156,49 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
         units = spec.get("units") or []
         if not units:
             raise SystemExit("gazetteer 类必须给 units（name/lon/lat）")
+
+        # **逐点几何校验**。这是整条链路最要紧的一步，原来它是**手工**跑的
+        # （src/check_gazetteer.py），没接进管线 —— 也就是说模型给的坐标
+        # 一个都没验就落盘了。后果正是「内容不对」里最难查的那两种：
+        #   · 坐标写错（落到隔壁省/海里）→ 县归错了 → **边界错**
+        #   · 坐标落在任何县境之外 → 那个单元分不到县 → **缺区域**
+        # 现在在本流程里直接验，并按结果决定是继续还是拦下。
+        try:
+            import check_gazetteer as CG
+            counties = CG.load_counties()
+            okpts, badpts = CG.check(units, counties, verbose=False)
+            report["units_checked"] = len(units)
+            report["units_offshore"] = len(badpts)
+            if badpts:
+                names = [r.get("name") for r in badpts]
+                report["units_offshore_names"] = names
+                frac = len(badpts) / max(1, len(units))
+                report["warnings"].append(
+                    f"{len(badpts)}/{len(units)} 个治所坐标**不落在任何中国县境内**"
+                    f"（{frac:.0%}）：{names[:8]}{'…' if len(names) > 8 else ''}"
+                    f" —— 这些坐标几乎可以确定是错的，它们周边的县会被归错，"
+                    f"图上表现为边界错或整块区域消失")
+                if frac >= 0.25:
+                    raise SystemExit(
+                        f"超过 1/4 的治所坐标是错的（{len(badpts)}/{len(units)}）：{names[:8]}。"
+                        f"用这份坐标建出来的图**边界是错的**，不建。"
+                        f"请换一个模型重起草，或手工订正这些坐标。")
+                # 少量错点：剔掉它们，别让错误坐标把周边的县也带歪
+                units = okpts
+                report["warnings"].append(
+                    f"已剔除这 {len(badpts)} 个错点（少几块区域，好过边界错）")
+            elif not quiet:
+                print(f"  坐标校验通过：{len(okpts)}/{len(units)} 个治所落在真实县境内")
+        except SystemExit:
+            raise
+        except Exception as e:
+            report["warnings"].append(
+                f"坐标校验没跑成（{type(e).__name__}: {e}）—— "
+                f"坐标可能有问题但这次没验出来，请手工跑 "
+                f"python src/check_gazetteer.py <坐标表>")
+
+        if not units:
+            raise SystemExit("坐标校验后一个可用单元都不剩，无法建图")
         gf = os.path.join(PROC, f"{tid}_province_gazetteer.json")
         json.dump({"_comment": f"{spec.get('title')} 单元坐标表（由 new_topic.py 生成）",
                    "_source": spec.get("units_source") or "见 source_note",
