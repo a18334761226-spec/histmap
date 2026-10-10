@@ -717,7 +717,8 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                     footer: str | None = None,
                     style_profile: dict | None = None,
                     strength: float = 1.0,
-                    period: str | None = None) -> Image.Image:
+                    period: str | None = None,
+                    text_only: bool = False) -> Image.Image:
     from histmap_core import Renderer, Layout, Region, Frame, Style
     year = int(str(date).split("-")[0])          # 别用 [:4]，807 是三位数
     gj = _dynasty_geometry(topic, year)
@@ -771,14 +772,18 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                                      style_profile, strength)
     r = Renderer(style, lay, projection="mercator", supersample=2)
     img = r.render_frame(fr, bbox=_fit_frame_bbox(regions, topic.bbox),
-                         legend_items=legend, legend_title="所属政权")
+                         legend_items=legend, legend_title="所属政权",
+                         text_only=text_only)
     note = footer if footer is not None else (
         _topic_json(topic).get("_footer")
         or gj.get("_meta", {}).get("method") or topic.source_note)
-    if note:
+    if note and not text_only:
+        # text_only 那层本来就只该有文字；页脚要画也画在文字层上，
+        # 但它用的是 draw_footer（直接改像素、不带 alpha），会破坏透明层，
+        # 所以文字层不画页脚。合成时页脚从完整渲染里取。
         import make_ww2_video as M
         M.draw_footer(img, note, r, style)
-    if prof is not None:
+    if prof is not None and not text_only:
         img = _material_pass(img, prof, strength)
     return img
 
@@ -916,7 +921,8 @@ def _topic_style_default_font() -> str:
 def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
            title: str | None = None, subtitle: str | None = None,
            footer: str | None = None, style_profile: dict | None = None,
-           strength: float = 1.0, period: str | None = None):
+           strength: float = 1.0, period: str | None = None,
+           text_only: bool = False):
     """出一张图。
 
     title / subtitle / footer 传 None 就用题材自己的默认文案（事件副标题、
@@ -925,6 +931,10 @@ def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
 
     period 是「这一帧代表哪一段」（如 "1040–1080"）。出片时连续几年疆域
     没变会合并成一帧，标题就得写区间而不是单个年份。
+
+    text_only=True 只画文字、返回带透明通道的图。用途是「模型出质感、
+    代码补文字」：大模型重画的图很好看，但会把中文标注画成形近的错字，
+    把这一层盖上去字就准了。
 
     style_profile 是从参考图提取出来的风格参数。它走的是**分类色重映射**：
     逐类别换掉区域色/画布/文字，再压一层材质（纹理/颗粒/暗角）。
@@ -936,7 +946,14 @@ def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
     if theme not in t.themes:
         theme = t.themes[0]
     kw = {"title": title, "subtitle": subtitle, "footer": footer,
-          "style_profile": style_profile, "strength": strength}
+          "style_profile": style_profile, "strength": strength,
+          "text_only": text_only}
     if t.kind == "dynasty":
         return _render_dynasty(t, date, theme, size, period=period, **kw)
+    # boundary 类还没实现 text_only（它的文字层走 ControlTimeline，
+    # 结构不一样）。明确说清，而不是让它因为多余的参数报 TypeError。
+    if text_only:
+        raise NotImplementedError(
+            "boundary 类题材（一战/二战欧洲）暂不支持只画文字层")
+    kw.pop("text_only", None)
     return _render_boundary(t, date, theme, size, **kw)

@@ -98,10 +98,19 @@ MODELS = {
         # 注：硅基流动的 DeepSeek 命名里没有「4.1」，只有 V4-Flash / V4-Pro / V3.2 / R1。
         # 上面这些 id 是本机从 /v1/models 实际查出来的，不是猜的。
         # ── 火山方舟（豆包）──
-        # 模型名要填控制台里的**接入点 ID**（ep-…）或模型 ID。
-        {"id": "doubao-seed-1-6-250615", "label": "豆包 Seed 1.6",
+        # ⚠️ 这里的模型名**必须从方舟的 /v1/models 实际拉**，不能凭记忆写。
+        # 实测教训：原来写的是 `doubao-seed-1-6-250615` 和
+        # `doubao-1-5-pro-32k-250115`，两个**都已经下线**（status=Shutdown /
+        # 直接不在清单里）。于是拿一个**完全正确的 key** 去调，得到的也是
+        # `404 InvalidEndpointOrModel.NotFound` —— 用户只会看到「用豆包不行」，
+        # 而真正的原因是名字过期了。火山会定期退役版本，所以这行要跟着更新。
+        # 下面是 2026-10 从方舟 /v1/models 拉到的在售型号。
+        # 也可以填控制台里的接入点 ID（ep-xxxx）。
+        {"id": "doubao-seed-2-1-pro-260915", "label": "豆包 Seed 2.1 Pro（强）",
          "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
-        {"id": "doubao-1-5-pro-32k-250115", "label": "豆包 1.5 Pro 32k",
+        {"id": "doubao-seed-2-1-turbo-260628", "label": "豆包 Seed 2.1 Turbo（快）",
+         "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
+        {"id": "doubao-seed-2-0-lite-260428", "label": "豆包 Seed 2.0 Lite（便宜）",
          "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
         # ── 阿里百炼（通义千问）──
         {"id": "qwen-plus", "label": "通义千问 plus",
@@ -116,15 +125,20 @@ MODELS = {
          "base": "https://api-inference.modelscope.cn/v1", "svc": "魔搭"},
     ],
     "image_edit": [
+        # 注意：图像模型在这个项目里**不用来画地图**。用它的地方是
+        # 「大模型生图」（/api/render/model）和「生成纸纹」。
+        # 豆包这几条是 2026-10 从方舟 /v1/models 实际拉的 ——
+        # 原来写的 `doubao-seedream-3-0-t2i-250415` 已不在清单里，调了就是 404。
+        {"id": "doubao-seedream-5-0-pro-260628", "label": "豆包 Seedream 5.0 Pro",
+         "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
+        {"id": "doubao-seedream-5-0-flash-260915", "label": "豆包 Seedream 5.0 Flash（快）",
+         "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
+        {"id": "doubao-seedream-4-0-20260415", "label": "豆包 Seedream 4.0",
+         "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
         {"id": "Qwen/Qwen-Image-Edit-2509", "label": "Qwen-Image-Edit-2509",
          "base": "https://api.siliconflow.cn/v1"},
         {"id": "Qwen/Qwen-Image-Edit", "label": "Qwen-Image-Edit",
          "base": "https://api.siliconflow.cn/v1"},
-        # 注意：图像模型在这个项目里**不用来画地图**。用它的地方是
-        # 「生成没有语义的材质」（纸纹/做旧/边框），生成完由代码把地图合成上去。
-        # 拿它整张重画地图，实测结构相似度会掉到 NCC −0.075。
-        {"id": "doubao-seedream-3-0-t2i-250415", "label": "豆包 Seedream 3.0（方舟·画材质）",
-         "base": "https://ark.cn-beijing.volces.com/api/v3"},
     ],
 }
 
@@ -378,6 +392,10 @@ class ModelImageReq(BaseModel):
     img_base: str = ""
     steps: int = 30
     seed: int | None = None
+    # 把代码渲染的文字层盖回去。**默认开**，因为实测模型会把中文标注
+    # 画成形近的错字（「盧龍」→「盧西」、「所屬政權」→「所闰改划」），
+    # 而纸的质感它做得非常好。开着就是「模型出质感、代码出文字」。
+    overlay_text: bool = True
 
 
 @app.post("/api/render/model")
@@ -427,6 +445,8 @@ def api_render_model(req: ModelImageReq, request: Request,
 
     stamp = int(time.time() * 1000)
     base_path = ""
+    text_layer_path = ""
+    ref_for_model = ""
     if req.mode == "restyle":
         date = req.date or (t.dates() or [""])[0]
         if not date:
@@ -437,13 +457,53 @@ def api_render_model(req: ModelImageReq, request: Request,
             raise HTTPException(500, f"底图渲染失败：{type(e).__name__}: {e}")
         base_path = os.path.join(MEDIA, f"modelbase_{req.scene}_{stamp}.png")
         img.save(base_path)
+        ref_for_model = base_path
 
-    # 默认提示词：**只描述质感，不提地图内容** —— 提了它就会去重画内容
+        if req.overlay_text:
+            # **先把字抹掉再交给模型。**
+            # 踩过的坑：直接把带字的底图给模型，它会照着画一遍 —— 但画出来是
+            # 形近错字；然后我们又把自己准的字盖上去，两套字位置不重合，
+            # 结果是「唐·唐豢藩鎮割據言807年7年」这种**重影**，比不盖还差。
+            # 所以顺序必须是：抹字 → 交给模型 → 盖字。
+            try:
+                import numpy as np
+                from PIL import Image as _I
+                from PIL import ImageFilter
+                layer = topics.render(req.scene, date, req.theme, req.size,
+                                      text_only=True)
+                text_layer_path = os.path.join(MEDIA,
+                                               f"textlayer_{req.scene}_{stamp}.png")
+                layer.save(text_layer_path)
+                # 文字遮罩 = 文字层的 alpha。膨胀一点把描边/光晕也盖住，
+                # 否则抹完会剩一圈残影；再轻微模糊让边界过渡自然。
+                mimg = layer.split()[-1].filter(ImageFilter.MaxFilter(9))
+                mimg = mimg.filter(ImageFilter.GaussianBlur(3))
+                m = np.asarray(mimg).astype(np.float32) / 255.0
+                a = np.asarray(img).astype(np.float32)
+                # 用大半径模糊值填：文字底下多半是纯色块或纸底，
+                # 模糊出来就是那块的颜色，填进去看不出补过
+                blurred = np.asarray(
+                    img.filter(ImageFilter.GaussianBlur(18))).astype(np.float32)
+                filled = a * (1 - m[..., None]) + blurred * m[..., None]
+                clean = os.path.join(MEDIA, f"modelclean_{req.scene}_{stamp}.png")
+                _I.fromarray(np.clip(filled, 0, 255).astype("uint8")).save(clean)
+                ref_for_model = clean
+            except Exception as e:
+                # 抹字失败就退回原图 —— 至少还能出图，只是会有重影风险
+                text_layer_path = ""
+                ref_for_model = base_path
+                print(f"[生图] 抹字失败，用原图：{type(e).__name__}: {e}")
+
+    # 默认提示词：**只描述质感，不提地图内容** —— 提了它就会去重画内容。
+    # 并且**明确禁止画字**：底图已经把字抹掉了，这里再说一句，
+    # 免得它自己"脑补"出标题和地名（脑补出来的就是形近错字）。
     prompt = (req.prompt or "").strip() or (
         "An antique hand-drawn historical atlas map. Aged parchment paper with "
         "visible fibre grain and soft foxing stains, muted earthy low-saturation "
         "colours, fine ink linework, subtle vignette, warm toned, printed in the "
-        "style of a 19th-century atlas plate.")
+        "style of a 19th-century atlas plate. "
+        "Do NOT draw any text, letters, numbers, characters or labels. "
+        "Leave every empty area completely empty.")
     out_path = os.path.join(MEDIA, f"modelgen_{req.scene}_{stamp}.png")
     prov = Z.SiliconFlow(key, model=model, base=base_url)
     try:
@@ -451,9 +511,10 @@ def api_render_model(req: ModelImageReq, request: Request,
             url, secs, seed = prov.text2img(
                 prompt, size="1024x1024", steps=req.steps, seed=req.seed,
                 negative_prompt=req.negative_prompt or
-                "text, letters, watermark, signature, logo, blurry, low quality")
+                "text, letters, numbers, characters, watermark, signature, "
+                "logo, blurry, low quality")
         else:
-            url, secs, seed = prov.run(base_path, prompt, steps=req.steps,
+            url, secs, seed = prov.run(ref_for_model, prompt, steps=req.steps,
                                        seed=req.seed)
         Z._download(url, out_path)
     except Exception as e:
@@ -470,12 +531,52 @@ def api_render_model(req: ModelImageReq, request: Request,
                     f"当前用的地址是 {base_url}）")
         raise HTTPException(502, f"模型生图失败：{msg}")
 
+    # ── 把代码渲染的文字层盖回去 ──
+    # 实测：豆包 Seedream 把地图重画得很漂亮（纸纹、线画、网点都很好），
+    # 但中文标注被它"画"成了形近错字：「盧龍」→「盧西」、「橫海」→「樓壺」、
+    # 「所屬政權」→「所闰改划」。这不是提示词能修的 —— 它在按纹理画字。
+    # 所以：质感用模型的，文字用代码的。文字层是带透明通道的，只盖字。
+    overlay_note = ""
+    model_path = out_path
+    if req.overlay_text and req.mode == "restyle" and base_path:
+        try:
+            from PIL import Image as _I
+            # 优先用前面已经渲染好的文字层（就是抹字时用的那一层），
+            # 保证「抹掉的字」和「盖回的字」是同一套、位置完全一致。
+            layer = _I.open(text_layer_path) if text_layer_path and \
+                os.path.exists(text_layer_path) else None
+            if layer is None:
+                date = req.date or (t.dates() or [""])[0]
+                layer = topics.render(req.scene, date, req.theme, req.size,
+                                      text_only=True)
+            bg = _I.open(out_path).convert("RGBA")
+            if layer.size != bg.size:
+                layer = layer.resize(bg.size, _I.LANCZOS)
+            out_path = os.path.join(MEDIA, f"modelgen_{req.scene}_{stamp}_txt.png")
+            _I.alpha_composite(bg, layer.convert("RGBA")).convert("RGB").save(out_path)
+            overlay_note = ("已抹掉模型画错的字、再把代码渲染的文字层盖回去"
+                            "（纸的质感是模型的，文字是代码的）")
+        except NotImplementedError as e:
+            overlay_note = f"没盖文字层：{e}"
+        except Exception as e:
+            overlay_note = f"盖文字层失败（用的是模型原图）：{type(e).__name__}: {e}"
+
     out = {"image": f"/media/api/{os.path.basename(out_path)}",
-           "model": model, "base": base_url, "mode": req.mode,
+           # api_base 是**接口地址**，base 是**底图路径** —— 这两个原来都叫
+           # "base"，后一次赋值把接口地址覆盖掉了，日志里就看到
+           # 「模型 doubao-... @ /media/api/modelbase_....png」这种自相矛盾的行。
+           "model": model, "api_base": base_url, "mode": req.mode,
            "prompt": prompt, "seconds": round(secs, 1), "seed": seed,
+           "overlay_text": bool(req.overlay_text and req.mode == "restyle"),
            "key_source": label}
+    if overlay_note:
+        out["overlay_note"] = overlay_note
     if base_path:
         out["base"] = f"/media/api/{os.path.basename(base_path)}"
+        if base_path != model_path:
+            out["model_raw"] = f"/media/api/{os.path.basename(model_path)}"
+        if ref_for_model and ref_for_model != base_path:
+            out["model_input"] = f"/media/api/{os.path.basename(ref_for_model)}"
         # 如实回报保真度，但**不拦截** —— 用不用由用户看图决定
         try:
             from PIL import Image
@@ -507,7 +608,10 @@ class StyleTextureReq(BaseModel):
     # Qwen-Image 在硅基流动，两家的模型名互不相认。早先 base 写死在
     # stylize.SiliconFlow 里、model 也写死成 Qwen/Qwen-Image，
     # 于是清单里那条「豆包 Seedream」根本不可能被用上 —— 典型的「配了不生效」。
-    img_model: str = "Qwen/Qwen-Image"
+    # 图像模型。留空就按「API 服务」自动挑这家的图像模型（豆包 Seedream /
+    # Qwen-Image）。**默认值不能写死一家** —— 原来默认 `Qwen/Qwen-Image`，
+    # 于是填了火山方舟也会把 Qwen 的名字发过去，得到 404/401。
+    img_model: str = ""
     img_base: str = ""
     mode: str = "texture"         # texture（默认，安全）| edit（图生图，实测会毁标注）
 
@@ -535,9 +639,21 @@ def api_style_texture(req: StyleTextureReq, request: Request,
     host = (request.client.host if request.client else "") or ""
     is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
     key = (x_api_key or "").strip()
+    srv_base = ""
     if not key and is_local:
-        key = (os.environ.get("SILICONFLOW_API_KEY")
-               or NT._key_from_env_file() or "")
+        # **不要只认 SILICONFLOW_API_KEY。** 这里原来就是只认它，于是
+        # 「.env 里填了火山方舟的 key」时，这一步会拿**硅基的 key 去打火山**，
+        # 得到 `401 AuthenticationError: The API key format is incorrect` ——
+        # 看起来像 key 错了，其实是**拿错了那一家的 key**。
+        # 统一走 server_default()：填了哪家就用哪家。
+        try:
+            from histmap_agent.llm import server_default
+            d = server_default()
+            key, srv_base = d.key, d.base
+        except SystemExit as e:
+            raise HTTPException(401, str(e))
+        except Exception:
+            key = key or NT._key_from_env_file() or ""
     if not key:
         raise HTTPException(401, "这一步要图像模型的 Key")
 
@@ -557,7 +673,7 @@ def api_style_texture(req: StyleTextureReq, request: Request,
     # 一个 Qwen 的视觉模型名去打火山（跟图像模型那次是同一个错）。
     # 调用方已经把提示词给全了的话，这一步根本用不到，prompt_override
     # 会让图直接跳过 vlm_describe，所以挑不出来也不影响。
-    vlm_base = ((x_base_url or "").strip()
+    vlm_base = ((x_base_url or "").strip() or srv_base
                 or os.environ.get("SILICONFLOW_BASE")
                 or "https://api.siliconflow.cn/v1")
     cfg = LLMConfig(key=key, base=vlm_base,
@@ -567,15 +683,29 @@ def api_style_texture(req: StyleTextureReq, request: Request,
     out_path = os.path.join(MEDIA, f"styled_{req.scene}_{int(time.time()*1000)}.png")
     ref = req.ref_path or base           # 没给参考图就拿底图当参考（只取质感）
     # 图像模型的地址：调用方给了就用；没给就从清单里按模型名反查
-    # （清单里豆包那条的 base 是火山方舟），再兜底到硅基流动。
+    # 图像模型的地址：调用方给了就用；没给就按模型名从清单反查；
+    # 再不行就用服务端配置那一家的地址（**不再无脑兜底到硅基流动** ——
+    # 那正是「填了火山方舟却拿硅基的 key 打火山」的来源）。
     img_base = (req.img_base or "").strip()
-    if not img_base:
+    if not img_base and req.img_model:
         hit = next((m for m in (MODELS.get("image_edit") or [])
                     if m.get("id") == req.img_model), None)
-        img_base = (hit or {}).get("base") or "https://api.siliconflow.cn/v1"
+        img_base = (hit or {}).get("base") or ""
+    img_base = img_base or ((x_base_url or "").strip() or srv_base)
+    # 模型名也没给：按地址从清单里挑一个这家的图像模型
+    img_model = (req.img_model or "").strip()
+    if not img_model and img_base:
+        cand = [m for m in (MODELS.get("image_edit") or [])
+                if (m.get("base") or "").rstrip("/") == img_base.rstrip("/")]
+        img_model = cand[0]["id"] if cand else ""
+    if not img_base or not img_model:
+        raise HTTPException(400, (
+            f"不知道用哪家的图像模型。当前接口地址={img_base or '（未指定）'}，"
+            f"模型={img_model or '（未指定）'}。请在设置里选「API 服务」，"
+            f"或在 .env 里配 HISTMAP_BASE / HISTMAP_IMAGE_MODEL。"))
     try:
         r, _ = run_style_graph(ref, base_path=base, vlm_cfg=cfg, img_key=key,
-                               img_model=req.img_model, img_base=img_base,
+                               img_model=img_model, img_base=img_base,
                                out_path=out_path,
                                mode=req.mode, verbose=False,
                                # 调用方给过提示词就用它，不再问一次视觉模型：
@@ -588,7 +718,7 @@ def api_style_texture(req: StyleTextureReq, request: Request,
         "base": f"/media/api/{os.path.basename(base)}",
         "image": f"/media/api/{os.path.basename(styled)}" if styled else "",
         "mode": r.get("mode"), "verdict": r.get("verdict"),
-        "img_model": req.img_model, "img_base": img_base,
+        "img_model": img_model, "img_base": img_base,
         "style_desc": r.get("style_desc") or req.style_desc,
         "image_prompt": r.get("image_prompt") or req.image_prompt,
         "blank": r.get("blank") or {}, "fidelity": r.get("fidelity") or {},

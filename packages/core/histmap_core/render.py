@@ -129,11 +129,26 @@ class Renderer:
 
     # ── 主渲染 ───────────────────────────────────────────────
     def render_frame(self, frame: Frame, bbox=None, series_meta=None,
-                     legend_items=None, legend_title=None) -> Image.Image:
+                     legend_items=None, legend_title=None,
+                     text_only: bool = False) -> Image.Image:
+        """画一帧。
+
+        text_only=True：**只画文字**（标题/副标题/地名/图例/页脚），
+        不画色块和边界，并且返回**带透明通道**的图。
+
+        为什么需要它：大模型重画的图质感很好，但会把中文标注"画"成形近的
+        错字（实测「盧龍」→「盧西」、「所屬政權」→「所闰改划」）。
+        有了这一层，就能**模型负责质感、代码负责文字**：
+        把模型出的图当底，再把这一层盖上去，字就是准的。
+        """
         st = self.style
         W = self.layout.width * self.ss
         H = self.layout.height * self.ss
-        img = Image.new("RGB", (W, H), _hex_to_rgb(st.background))
+        if text_only:
+            # 透明底：只有文字像素有颜色，合成时不会盖住模型画的纸纹
+            img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        else:
+            img = Image.new("RGB", (W, H), _hex_to_rgb(st.background))
         draw = ImageDraw.Draw(img, "RGBA")
 
         if bbox is None:
@@ -158,13 +173,14 @@ class Renderer:
             # 都有自己的外环；若把 ring[1:] 当作「洞」用背景色覆盖，会把苏联、
             # 大英帝国这类多块实体的领土整片涂掉（已踩过）。
             # 真正的洞（如南非内的莱索托）暂不支持，属已知限制。
-            for ring in pts_all:
-                if len(ring) >= 3:
-                    draw.polygon(ring, fill=color + (int(255 * st.region_alpha),))
+            if not text_only:
+                for ring in pts_all:
+                    if len(ring) >= 3:
+                        draw.polygon(ring, fill=color + (int(255 * st.region_alpha),))
             polys.append((reg, pts_all, color))
 
         # 2) 描边
-        if st.border_width > 0:
+        if st.border_width > 0 and not text_only:
             for reg, pts_all, color in polys:
                 for ring in pts_all:
                     if len(ring) >= 3:
@@ -260,6 +276,9 @@ class Renderer:
         if self.ss > 1:
             img = img.resize((self.layout.width, self.layout.height),
                              Image.LANCZOS)
+        if text_only:
+            # 缩放会把 alpha 也带上；这里确保是 RGBA，合成时直接用
+            img = img.convert("RGBA")
         return img
 
     # ── 辅助 ─────────────────────────────────────────────────

@@ -126,6 +126,34 @@ def _b64_image(path: str) -> str:
 
 
 # ── 后端 ────────────────────────────────────────────────────
+def _pick_image_url(body: dict) -> str:
+    """从各家不同的响应里取出图片 URL。
+
+    **同一个 OpenAI 兼容协议，两家回的字段名不一样：**
+        硅基流动 / 魔搭： {"images": [{"url": ...}]}
+        火山方舟（豆包）： {"data":   [{"url": ...}]}      ← OpenAI 原生写法
+    踩过的坑：原来只读 `images`，于是选豆包时**图其实已经生成好了**，
+    我们却因为读不到字段而抛「响应无图片」，把一张已经算完（已计费）的图扔掉。
+    报错里还把整个响应打出来了 —— 现在能一眼看出 data 里明明有 url。
+    所以两种都认，并且再兜一层：递归找任何像 url 的字符串。
+    """
+    for key in ("images", "data"):
+        arr = body.get(key)
+        if isinstance(arr, list):
+            for it in arr:
+                if isinstance(it, dict):
+                    u = it.get("url") or it.get("image_url") or it.get("b64_json")
+                    if u:
+                        return u if str(u).startswith("http") else ""
+                elif isinstance(it, str) and it.startswith("http"):
+                    return it
+    # 最后的兜底：响应里任何 http 开头的字符串
+    for v in body.values():
+        if isinstance(v, str) and v.startswith("http"):
+            return v
+    return ""
+
+
 class SiliconFlow:
     """OpenAI 兼容的**同步**图像接口：提交后响应里直接给图片 URL。
 
@@ -162,10 +190,10 @@ class SiliconFlow:
             body = _post_json(f"{self.base}/images/generations", payload, h, timeout)
         except urllib.error.HTTPError as e:
             raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8','replace')[:600]}") from None
-        imgs = body.get("images") or []
-        if not imgs or not imgs[0].get("url"):
+        url = _pick_image_url(body)
+        if not url:
             raise RuntimeError(f"响应无图片: {json.dumps(body, ensure_ascii=False)[:400]}")
-        return imgs[0]["url"], time.time() - t0, body.get("seed")
+        return url, time.time() - t0, body.get("seed")
 
     def text2img(self, prompt, model=None, size="1024x1024", steps=30,
                  seed=None, negative_prompt="", timeout=300):
@@ -179,9 +207,20 @@ class SiliconFlow:
         """
         h = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
              "X-Enable-Watermark": "0"}
-        payload = {"model": model or "Qwen/Qwen-Image", "prompt": prompt,
+        # **默认用 self.model，不要写死一家。**
+        # 踩过的坑：这里原来写 `model or "Qwen/Qwen-Image"`，于是调用方
+        # 明明选了豆包（base 是火山方舟），纯文生图却把 Qwen 的名字发过去，
+        # 得到 `404 InvalidEndpointOrModel.NotFound: Qwen/Qwen-Image`。
+        # self.model 已在 __init__ 里兜过默认值，直接用就行。
+        payload = {"model": model or self.model, "prompt": prompt,
                    "image_size": size, "num_inference_steps": steps,
                    "batch_size": 1}
+        # 火山方舟的图像接口用 size 而不是 image_size，多给一个不冲突
+        if "volces.com" in self.base:
+            payload["size"] = size
+            payload.pop("image_size", None)
+            payload.pop("num_inference_steps", None)
+            payload["response_format"] = "url"
         if negative_prompt:
             payload["negative_prompt"] = negative_prompt
         if seed is not None:
@@ -191,10 +230,10 @@ class SiliconFlow:
             body = _post_json(f"{self.base}/images/generations", payload, h, timeout)
         except urllib.error.HTTPError as e:
             raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8','replace')[:600]}") from None
-        imgs = body.get("images") or []
-        if not imgs or not imgs[0].get("url"):
+        url = _pick_image_url(body)
+        if not url:
             raise RuntimeError(f"响应无图片: {json.dumps(body, ensure_ascii=False)[:400]}")
-        return imgs[0]["url"], time.time() - t0, body.get("seed")
+        return url, time.time() - t0, body.get("seed")
 
 
 class ModelScope:
