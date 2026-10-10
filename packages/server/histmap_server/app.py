@@ -1496,6 +1496,21 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
     base = (x_base_url or "").strip()
     client_key = (x_api_key or "").strip()
 
+    # 「访问者没带 Key，服务端也不能用站长的」在公网是**常态**，不是异常。
+    # 早先这种情况会一路走到 new_topic.draft 里抛出
+    # 「设 SILICONFLOW_API_KEY，或用 --key 传」—— 那是给开发者看的命令行说明，
+    # 网页访客既看不懂也做不到，而且状态码是 400（应该是 401 需要鉴权）。
+    # 这里提前拦住，给一句网页用户能照做的话。
+    server_key = ""
+    if allow_env:
+        server_key = (os.environ.get("SILICONFLOW_API_KEY")
+                      or NT._key_from_env_file() or "")
+    if not client_key and not server_key:
+        raise HTTPException(401, (
+            "起草新题材需要一个模型 Key。点右上角「设置」填一个就行 —— "
+            "它只存在你自己浏览器的 localStorage 里，不上传、不写盘、不进日志。"
+            "（出图不需要 Key：地图是代码画的。）"))
+
     def _run(k: str, b: str):
         return NT.draft(req.ask.strip(), key=k, model=model, base=b,
                         verbose=False, allow_env_key=allow_env)
@@ -1527,7 +1542,16 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
         else:
             raise HTTPException(401, str(e))
     except SystemExit as e:
-        raise HTTPException(400, str(e))
+        # 注：上面那个 except NT.ModelAuthError 一定先命中（它同时继承
+        # SystemExit 和 Exception），所以走到这里的都是别的原因。
+        msg = str(e)
+        # 把面向命令行的措辞换成网页访客能照做的说法。
+        # 这类消息本来是给 `python src/new_topic.py` 的用户看的，
+        # 原样返回给网页用户只会让人以为坏了。
+        if "SILICONFLOW_API_KEY" in msg or "--key" in msg:
+            msg = ("起草新题材需要一个模型 Key，点右上角「设置」填一个即可。"
+                   "（出图不需要 Key：地图是代码画的。）")
+        raise HTTPException(400, msg)
     except Exception as e:
         raise HTTPException(500, f"起草失败：{type(e).__name__}: {e}")
     # 顺带把「这份草案能不能真的建出来」预判一下，省得用户点了才发现对不上
@@ -1562,7 +1586,14 @@ def api_topic_create(req: TopicCreateReq,
     try:
         rep = NT.build(spec, install=bool(req.install), quiet=True)
     except SystemExit as e:
-        raise HTTPException(400, str(e))
+        # 同 api_topic_draft：这里抛出来的多半是面向命令行的措辞
+        # （「先跑 python src/build_dynasty_map.py ...」之类），
+        # 网页用户看不懂也做不到，换成能照做的说法。
+        msg = str(e)
+        if "python src/" in msg or "SILICONFLOW_API_KEY" in msg:
+            msg = ("这个题材没能建出来：" + msg.split("\n")[0]
+                   + "（出图不需要 Key；这一步要取行政区数据，可能要等一会儿）")
+        raise HTTPException(400, msg)
     except Exception as e:
         raise HTTPException(500, f"构建失败：{type(e).__name__}: {e}")
     _reload_topics()

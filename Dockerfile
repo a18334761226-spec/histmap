@@ -64,9 +64,15 @@ print('缺运行期数据的题材：', [r['topic'] for r in rep] or '（无）'
 # 运行期要写 output/（渲染产物、任务目录），建好并确保可写
 RUN mkdir -p output/api output/jobs output/style_previews
 
-ENV PORT=8810 \
+# 端口：默认 7860 —— Hugging Face Spaces 的 Docker 约定端口。
+# app.py 见到 $PORT 就绑 0.0.0.0:$PORT，所以两种情况都自洽：
+#   · 平台注入 PORT（Render / Fly 都会）→ 跟着平台的走
+#   · 平台不注入（HF 按 README 里的 app_port 路由）→ 用这里的 7860
+# 早先默认写 8810，万一平台注入的是 7860，就会和 app_port 对不上，
+# 表现是 Space 一直不健康 —— 那种错从日志里几乎看不出来。
+ENV PORT=7860 \
     HOST=0.0.0.0
-EXPOSE 8810
+EXPOSE 7860
 
 # 云平台会注入 $PORT；app.py 见到 PORT 就绑 0.0.0.0
 CMD ["python", "packages/server/histmap_server/app.py"]

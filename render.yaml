@@ -9,7 +9,10 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
-      - key: PORT
-        value: 8810
+      # **不要在这里写死 PORT**。Render 自己会注入 PORT，并且按它去探活；
+      # 我们如果也写一个（早先写的是 8810），就会把 Render 注入的值盖掉，
+      # 于是应用监听的端口和 Render 探活的端口不一致 —— 表现为部署完成但
+      # 一直 unhealthy，日志里什么错都看不到。
+      # app.py 见到 $PORT 就绑 0.0.0.0:$PORT，不写死才是对的。
       - key: HOST
         value: 0.0.0.0

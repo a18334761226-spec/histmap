@@ -71,14 +71,41 @@ python src/fetch_data.py --all        # 国内建议先设 HTTPS_PROXY
 
 免费 CPU、原生支持 Docker、不需要信用卡，是目前最省事的选择。
 
-1. 注册 https://huggingface.co 并登录
-2. 右上头像 → **New Space**
-   - Name：`histmap`
-   - License：`MIT`
-   - SDK：**Docker** → Template：**Blank**
-   - Hardware：CPU basic（免费）
-   - Visibility：Public
-3. 把本仓库推上去（Space 会自动构建）：
+### 用脚本推（推荐，避开两个必踩的坑）
+
+```bash
+python src/deploy_hf.py --check                 # 部署前自检（不联网）
+python src/deploy_hf.py --dry-run               # 看一眼到底会推什么（不花 token）
+set HF_TOKEN=hf_xxxxxxxx                        # token 见下
+python src/deploy_hf.py --repo 你的用户名/histmap
+```
+
+token 在 https://huggingface.co/settings/tokens 建，类型选 **write**。
+
+**为什么不直接敲 `git push`**：手工那两步各有一个坑，而且都不报错、只是不好使：
+
+1. **HF 只认根目录 `README.md` 里的 YAML front-matter。** 本项目的元数据在
+   `README_HF.md` —— 直接推上去会得到一个**没有元数据的 Space**
+   （sdk 不对、app_port 不对，构建完打不开）。脚本会把 front-matter 拼到
+   项目 README 开头，两份内容在 Space 页面上都有；仓库里的 README.md 不动。
+2. **`app_port` 必须和容器真正监听的端口一致。** Dockerfile 里是
+   `ENV PORT=7860`，所以 app_port 也是 7860。不一致的表现是 Space 一直
+   不健康，从日志里几乎看不出原因。
+
+脚本用 `git archive` 只导出**受版本控制的文件**，所以 `__pycache__`、
+`out/`、`.env` 不会被打包上云（`--dry-run` 会把这几项逐一列出来）。
+
+> 解包用的是 Python 的 `tarfile` 而不是 `tar` 命令：仓库里有个中文文件名
+> （`启动工作台.cmd`），Windows 自带的 bsdtar 解 `git archive` 出来的
+> UTF-8 名字会报 `Invalid empty pathname`。这坑是 `--dry-run` 抓出来的。
+
+### 或者手工推
+
+1. 注册 https://huggingface.co
+2. **New Space** → Name `histmap`、License `MIT`、SDK **Docker** → Blank、
+   Hardware CPU basic、Visibility Public
+3. **先把 `README_HF.md` 的 front-matter 拼到 `README.md` 开头**（否则没元数据），
+   然后：
 
 ```bash
 git remote add hf https://huggingface.co/spaces/<你的用户名>/histmap
@@ -88,7 +115,7 @@ git push hf main
 4. 等构建完成（首次约 3–6 分钟，其中包含下载 CShapes），
    访问 `https://huggingface.co/spaces/<你的用户名>/histmap`
 
-> Space 的容器端口由 `PORT` 注入，`app.py` 见到 `PORT` 会自动绑 `0.0.0.0`。
+> 容器端口：平台注入 `PORT` 时 `app.py` 绑 `0.0.0.0:$PORT`；不注入时用 7860。
 > 如果界面打不开，先看 Space 的 Build/Logs 里有没有 `工作台已启动`。
 
 ---
