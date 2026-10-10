@@ -14,9 +14,10 @@
 分开之后方向是单向的：agent 依赖 core，server 和 src 依赖 agent。
 """
 
-from .llm import LLMConfig, ModelAuthError, chat_json          # noqa: F401
-from .geodata import (GB_LICENSE, fetch_adm, gb_license,       # noqa: F401
+from .llm import (LLMConfig, ModelAuthError, chat_json,      # noqa: F401
+                  chat_json_vision)
+from .geodata import (GB_LICENSE, fetch_adm, gb_license,     # noqa: F401
                       match_names, units_of)
 
-__all__ = ["LLMConfig", "ModelAuthError", "chat_json", "GB_LICENSE",
-           "fetch_adm", "gb_license", "match_names", "units_of"]
+__all__ = ["LLMConfig", "ModelAuthError", "chat_json", "chat_json_vision",
+           "GB_LICENSE", "fetch_adm", "gb_license", "match_names", "units_of"]

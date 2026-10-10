@@ -106,8 +106,10 @@ def main():
         print(f"\n✗ key 没问题，但模型名 {model} 在这个服务商上不存在 —— 换模型名。")
     elif code == 401:
         print("\n✗ key 被拒。")
-    elif code in (402, 403):
-        print("\n✗ 鉴权过了但被拒（余额/权限/实名）。去后台看余额。")
+    elif code in (402, 403) or "balance" in body.lower() or "insufficient" in body.lower():
+        print("\n✗ **账户余额不足**（Key 和模型名都是对的）。"
+              "列模型那个接口不花 token 所以返回 200，一发对话才是 402 —— "
+              "去服务商后台充值，别再去改 Key 或模型名。")
     return 1
 
 

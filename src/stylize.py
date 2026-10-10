@@ -152,6 +152,35 @@ class SiliconFlow:
             raise RuntimeError(f"响应无图片: {json.dumps(body, ensure_ascii=False)[:400]}")
         return imgs[0]["url"], time.time() - t0, body.get("seed")
 
+    def text2img(self, prompt, model=None, size="1024x1024", steps=30,
+                 seed=None, negative_prompt="", timeout=300):
+        """纯文生图（**不带输入图**）。
+
+        为什么要单独一个方法：图生图那条路实测会把中文标注改成乱码笔画
+        （见 style_graph 的说明与实测数据），因为"编辑一张图"这个任务本身
+        就允许模型重画内容。而**生成一张纸纹**不需要它保住任何内容 ——
+        纸纹本来就该只有材质。把任务换成"从零画一张空白纸"，
+        模型改坏东西的空间就没了，然后我们把地图**画在它上面**。
+        """
+        h = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
+             "X-Enable-Watermark": "0"}
+        payload = {"model": model or "Qwen/Qwen-Image", "prompt": prompt,
+                   "image_size": size, "num_inference_steps": steps,
+                   "batch_size": 1}
+        if negative_prompt:
+            payload["negative_prompt"] = negative_prompt
+        if seed is not None:
+            payload["seed"] = seed
+        t0 = time.time()
+        try:
+            body = _post_json(f"{self.base}/images/generations", payload, h, timeout)
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"HTTP {e.code}: {e.read().decode('utf-8','replace')[:600]}") from None
+        imgs = body.get("images") or []
+        if not imgs or not imgs[0].get("url"):
+            raise RuntimeError(f"响应无图片: {json.dumps(body, ensure_ascii=False)[:400]}")
+        return imgs[0]["url"], time.time() - t0, body.get("seed")
+
 
 class ModelScope:
     """异步：提交拿 task_id，再轮询 /v1/tasks/{id}。

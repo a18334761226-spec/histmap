@@ -197,8 +197,21 @@ def api_models():
 # 1) 风格提取：上传参考图 → 风格 profile
 # ════════════════════════════════════════════════════════════
 @app.post("/api/style/extract")
-async def style_extract(file: UploadFile = File(...)):
-    """从上传的参考图提取可复用的风格参数（纯代码，不调任何模型）。"""
+async def style_extract(request: Request, file: UploadFile = File(...),
+                        vlm: bool = False,
+                        x_api_key: str | None = Header(None, alias="X-Api-Key"),
+                        x_base_url: str | None = Header(None, alias="X-Base-Url"),
+                        x_model: str | None = Header(None, alias="X-Model")):
+    """从上传的参考图提取风格。
+
+    默认**纯代码**（调色板/颗粒/暗角），不调任何模型 —— 所以永远可用。
+    `vlm=true` 时再加一步：让视觉模型读这张图，产出**中文风格描述 + 给图生图
+    模型的英文提示词**。这就是「抽取风格**和提示词**」里的提示词那一半：
+    色调可以从像素里量出来，但"这套风格该怎么用文字描述、该怎么写成提示词"
+    只能靠模型，纯代码量不出来。
+
+    视觉模型失败不影响接口成功：退回纯代码结果，并在 `vlm_error` 里说明原因。
+    """
     import style_from_image as SFI
     from PIL import Image
 
@@ -225,7 +238,140 @@ async def style_extract(file: UploadFile = File(...)):
         if variety < 0.18 else
         "参考图色相丰富，可以连配色一起替换" if variety > 0.35 else
         "参考图色相偏单调，建议只取质感")
-    return {"profile": prof, "preview": f"/media/api/{os.path.basename(tmp)}"}
+
+    out = {"profile": prof, "preview": f"/media/api/{os.path.basename(tmp)}",
+           "ref_path": tmp, "style_desc": "", "image_prompt": "",
+           "tags": [], "is_light": None, "vlm": False}
+    if vlm:
+        host = (request.client.host if request.client else "") or ""
+        is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+        key = (x_api_key or "").strip()
+        if not key and is_local:
+            try:
+                import new_topic as NT
+                key = (os.environ.get("SILICONFLOW_API_KEY")
+                       or NT._key_from_env_file() or "")
+            except Exception:
+                key = os.environ.get("SILICONFLOW_API_KEY") or ""
+        if not key:
+            out["vlm_error"] = "没有可用的 Key（视觉模型要 Key；纯代码提取不受影响）"
+        else:
+            try:
+                from histmap_agent import LLMConfig
+                from histmap_agent.style_graph import run_style_graph
+                cfg = LLMConfig(
+                    key=key, base=(x_base_url or "").strip()
+                    or os.environ.get("SILICONFLOW_BASE")
+                    or "https://api.siliconflow.cn/v1",
+                    # 读图要用视觉模型；界面选的对话模型多半不支持读图
+                    model=(x_model or "").strip() or "Qwen/Qwen3-VL-32B-Instruct",
+                    temperature=0.3)
+                # 只跑"读图出描述与提示词"这一段：不生成、不合成。
+                # 生成那一步是单独一个接口（/api/style/texture），
+                # 因为它要几十秒且要底图。
+                r, _ = run_style_graph(tmp, base_path="", vlm_cfg=cfg,
+                                       verbose=False)
+                # vlm=True 的含义是「**读出来了**」，不是「试着读了」。
+                # 图内部会把视觉模型不可用接住并退回纯代码，这时 desc/prompt 是空的；
+                # 若还报 vlm=True，调用方（和烟测）就会把"没读出来"当成功能正常。
+                got_desc = bool((r.get("style_desc") or "").strip())
+                out.update({
+                    "vlm": got_desc,
+                    "style_desc": r.get("style_desc") or "",
+                    "image_prompt": r.get("image_prompt") or "",
+                    "tags": r.get("tags") or [],
+                    "is_light": r.get("is_light"),
+                    "vlm_palette": r.get("vlm_palette") or [],
+                    "log": r.get("log") or [],
+                    "negative_prompt": r.get("negative_prompt") or "",
+                })
+                if not got_desc:
+                    out["vlm_error"] = next(
+                        (l for l in (r.get("log") or []) if "不可用" in l or "失败" in l),
+                        "视觉模型没有给出风格描述")
+            except Exception as e:
+                out["vlm_error"] = f"{type(e).__name__}: {str(e)[:300]}"
+    return out
+
+
+class StyleTextureReq(BaseModel):
+    """用模型生成纸纹，再把代码画好的地图贴上去。"""
+    scene: str
+    date: str = ""
+    theme: str = "light"
+    size: str = "16x9"
+    ref_path: str = ""            # 参考图（/api/style/extract 返回的那个）
+    style_desc: str = ""
+    image_prompt: str = ""        # 前面抽出来的提示词；给了就用它，不再问一次视觉模型
+    img_model: str = "Qwen/Qwen-Image"
+    mode: str = "texture"         # texture（默认，安全）| edit（图生图，实测会毁标注）
+
+
+@app.post("/api/style/texture")
+def api_style_texture(req: StyleTextureReq, request: Request,
+                      x_api_key: str | None = Header(None, alias="X-Api-Key"),
+                      x_base_url: str | None = Header(None, alias="X-Base-Url"),
+                      x_model: str | None = Header(None, alias="X-Model")):
+    """「通过提示词 + 数据 + 风格让大模型生成」这一步。
+
+    做法是**代码先画好精确的地图，模型只生成纸纹，再把地图贴到纸纹上**。
+    为什么不让模型直接画地图：实测让它编辑一张地图，纸纹做得很好，
+    但中文标注全被改成乱码笔画（`所属政权`→`所鹰政权`），
+    尺寸归一之后结构相似度也只有 0.84。所以模型只做它做得好的那一层。
+
+    返回 `fidelity.content_changed_ratio` —— **地图内容被改动的像素比例**，
+    必须是 0。这是这一步唯一值得看的数字。
+    """
+    import new_topic as NT
+    t = topics.get(req.scene)
+    if not t:
+        raise HTTPException(404, "没有这个题材")
+
+    host = (request.client.host if request.client else "") or ""
+    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    key = (x_api_key or "").strip()
+    if not key and is_local:
+        key = (os.environ.get("SILICONFLOW_API_KEY")
+               or NT._key_from_env_file() or "")
+    if not key:
+        raise HTTPException(401, "这一步要图像模型的 Key")
+
+    date = req.date or (t.dates() or [""])[0]
+    if not date:
+        raise HTTPException(400, "这个题材没有可渲染的日期")
+    try:
+        img = topics.render(req.scene, date, req.theme, req.size)
+    except Exception as e:
+        raise HTTPException(500, f"底图渲染失败：{type(e).__name__}: {e}")
+    base = os.path.join(MEDIA, f"base_{req.scene}_{int(time.time()*1000)}.png")
+    img.save(base)
+
+    from histmap_agent import LLMConfig
+    from histmap_agent.style_graph import run_style_graph
+    cfg = LLMConfig(key=key,
+                    base=(x_base_url or "").strip()
+                    or os.environ.get("SILICONFLOW_BASE")
+                    or "https://api.siliconflow.cn/v1",
+                    model=(x_model or "").strip() or "Qwen/Qwen3-VL-32B-Instruct",
+                    temperature=0.3)
+    out_path = os.path.join(MEDIA, f"styled_{req.scene}_{int(time.time()*1000)}.png")
+    ref = req.ref_path or base           # 没给参考图就拿底图当参考（只取质感）
+    try:
+        r, _ = run_style_graph(ref, base_path=base, vlm_cfg=cfg, img_key=key,
+                               img_model=req.img_model, out_path=out_path,
+                               mode=req.mode, verbose=False)
+    except Exception as e:
+        raise HTTPException(500, f"生成失败：{type(e).__name__}: {str(e)[:300]}")
+    styled = r.get("styled_path") or ""
+    return {
+        "base": f"/media/api/{os.path.basename(base)}",
+        "image": f"/media/api/{os.path.basename(styled)}" if styled else "",
+        "mode": r.get("mode"), "verdict": r.get("verdict"),
+        "style_desc": r.get("style_desc") or req.style_desc,
+        "image_prompt": r.get("image_prompt") or req.image_prompt,
+        "blank": r.get("blank") or {}, "fidelity": r.get("fidelity") or {},
+        "log": r.get("log") or [],
+    }
 
 
 # ════════════════════════════════════════════════════════════
@@ -1250,6 +1396,13 @@ def api_key_test(request: Request,
     if code == 404:
         out.update(step="model",
                    detail=f"Key 没问题，但这个接口上没有模型「{model}」——换一个模型名")
+        return out
+    # 402 / 余额不足要单独认出来：Key 是对的、模型名也是对的，
+    # 只是账户没钱了。把它归到「模型」或「Key」都会让人白折腾。
+    # 实测就是这么撞上的：列模型 200（不花 token），一发对话 402。
+    if code in (402, 403) or "balance" in body.lower() or "insufficient" in body.lower():
+        out.update(step="balance",
+                   detail=f"Key 和模型都没问题，但**账户余额不足**：{body}")
         return out
     out.update(step="model",
                detail=f"发对话返回 HTTP {code}：{body}")

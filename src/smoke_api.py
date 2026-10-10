@@ -165,6 +165,64 @@ def main():
             ref = None
 
     if ref and os.path.exists(ref):
+        def _multipart(p, field="file"):
+            blob = open(p, "rb").read()
+            bd = "----smoke2"
+            head = (f"--{bd}\r\nContent-Disposition: form-data; name=\"{field}\"; "
+                    f"filename=\"{os.path.basename(p)}\"\r\n"
+                    f"Content-Type: image/png\r\n\r\n").encode()
+            return head + blob + f"\r\n--{bd}--\r\n".encode(), bd
+
+        st, r = call(B, "/api/style/extract?vlm=true", "POST",
+                     raw=_multipart(ref)[0],
+                     ctype=f"multipart/form-data; boundary=----smoke2",
+                     timeout=420)
+        check("/api/style/extract?vlm=true 成功（视觉模型不可用也算成功）",
+              st == 200 and isinstance(r, dict) and r.get("profile"),
+              f"status={st} {str(r)[:160]}")
+        if st == 200 and isinstance(r, dict):
+            if r.get("vlm"):
+                check("抽到了风格描述和生图提示词",
+                      bool((r.get("style_desc") or "").strip())
+                      and bool((r.get("image_prompt") or "").strip()),
+                      f"desc={len(r.get('style_desc') or '')} "
+                      f"prompt={len(r.get('image_prompt') or '')}")
+            else:
+                # 视觉模型失败有两种落法：接口把它放在 vlm_error 里，
+                # 或者图内部接住、只在 log 里说明。两种都要认，
+                # 否则「余额不足」会被报成功能坏了，把真回归淹掉。
+                why = str(r.get("vlm_error") or "") + " " + " ".join(r.get("log") or [])
+                low = why.lower()
+                if any(k in why for k in ("余额不足", "不可用", "未配")) or \
+                        any(k in low for k in ("balance", "insufficient", "402", "auth")):
+                    print(f"  SKIP  视觉模型读图 —— {why.strip()[:150]}")
+                else:
+                    check("视觉模型不可用时给明了原因（不是静默失败）",
+                          bool(r.get("vlm_error")), why.strip()[:160])
+            if args.video and r.get("vlm"):
+                st2, k = call(B, "/api/style/texture", "POST", {
+                    "scene": "tang", "date": "807-01-01", "theme": "light",
+                    "size": "16x9", "ref_path": r.get("ref_path") or "",
+                    "image_prompt": r.get("image_prompt") or "",
+                    "mode": "texture"}, timeout=900)
+                check("/api/style/texture 成功", st2 == 200 and isinstance(k, dict),
+                      f"status={st2} {str(k)[:160]}")
+                if st2 == 200 and isinstance(k, dict):
+                    fid = k.get("fidelity") or {}
+                    check("纸纹版地图内容改动必须严格为 0",
+                          fid.get("content_changed_ratio") == 0.0
+                          and fid.get("changed_pixels") == 0,
+                          f"changed={fid.get('changed_pixels')} "
+                          f"ratio={fid.get('content_changed_ratio')}")
+                    check("纸纹版必须给出 verdict（用没用模型说清楚）",
+                          k.get("verdict") in ("textured", "cv_only"),
+                          str(k.get("verdict")))
+            else:
+                print("  SKIP  纸纹生成（加 --video 开启，每次约 20–60 秒）")
+    else:
+        print("  SKIP  风格与提示词抽取（没有参考图）")
+
+    if ref and os.path.exists(ref):
         with open(ref, "rb") as f:
             blob = f.read()
         # 故意不设 Content-Type（前端 FormData 就是这样）—— 后端不该依赖它
@@ -401,10 +459,26 @@ def main():
           and r.get("step") == "key",
           f"status={st} {str(r)[:140]}")
 
+    # 先探一下账户还有没有额度。**没有额度不是代码缺陷** —— 如果把它算成
+    # 一堆 FAIL，真正的回归就会被淹没在噪声里；但也绝不能悄悄跳过，
+    # 所以这里明确打一条 SKIP，并把它记下来在结尾再喊一次。
+    no_credit = ""
     if key:
         st, r = call(B, "/api/key/test", "POST", {}, headers={"X-Api-Key": key})
-        check("/api/key/test 对 key 时报可用", st == 200 and r.get("ok") is True,
-              f"status={st} {str(r)[:160]}")
+        if st == 200 and isinstance(r, dict):
+            if r.get("ok") is True:
+                check("/api/key/test 对 key 时报可用", True, "")
+            elif r.get("step") == "balance":
+                no_credit = str(r.get("detail") or "账户余额不足")
+                print(f"  SKIP  /api/key/test 对 key 时报可用 —— {no_credit[:120]}")
+            else:
+                check("/api/key/test 对 key 时报可用", False,
+                      f"step={r.get('step')} {str(r.get('detail'))[:160]}")
+        else:
+            check("/api/key/test 对 key 时报可用", False, f"status={st} {str(r)[:140]}")
+    if no_credit:
+        print("\n  ！！ 模型额度不可用，下面所有要调模型的检查改为 SKIP。")
+        print("     " + no_credit[:200])
 
     # ── 5c) 分镜：同态帧合并的不变量 ──
     # 这条检查是为了防「界面说 6 帧、实际出 4 帧」这类对不上的问题。
@@ -440,6 +514,8 @@ def main():
 
     if not key:
         print("  SKIP  对话真实调用（没找到 .env 里的 key）")
+    elif no_credit:
+        print("  SKIP  对话真实调用（账户余额不足，不是代码问题）")
     else:
         cases = [("我要唐朝宪宗二年的藩镇图", "tang", "807-01-01"),
                  ("换成唐朝", None, None),

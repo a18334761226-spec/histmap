@@ -19,12 +19,25 @@ import re
 from dataclasses import dataclass, field
 
 
-class ModelAuthError(SystemExit):
-    """模型鉴权失败（401/403）。
+class ModelAuthError(SystemExit, Exception):
+    """模型鉴权/余额失败（401/403/402）。
 
     单独一个异常类型，是因为调用方需要精确区分「key 不对」和「别的错」。
-    继承 SystemExit 是为了兼容已有的 except SystemExit 分支。
+
+    **为什么同时继承 SystemExit 和 Exception**：只继承 SystemExit 会踩一个很隐蔽的坑 ——
+    SystemExit 属于 BaseException，**不是 Exception**，所以写 `except Exception`
+    的兜底分支根本接不住它。实测就是这么炸的：风格图里 `vlm_describe` 明明写了
+    「视觉模型不可用就退回纯代码」的 except Exception，余额不足时却一路冒到
+    FastAPI，界面上是 500，日志里才看得出是 402。
+    两个都继承之后，`except SystemExit`（命令行那套）和 `except Exception`
+    （兜底那套）都能接住，不会再有地方悄悄漏掉它。
     """
+
+
+# 余额不足单独一个类型：Key 和模型名都对，只是账户没钱了。
+# 界面上要能把这件事说清楚，不能混进「Key 不对」里让人白折腾。
+class ModelBalanceError(ModelAuthError):
+    """HTTP 402 / 余额不足。"""
 
 
 @dataclass
@@ -126,12 +139,8 @@ def _http_client(cfg: "LLMConfig"):
             return None
 
 
-def chat_json(cfg: LLMConfig, prompt: str) -> dict:
-    """发一次对话，要求回 JSON 对象。
-
-    走 langchain-openai 的 ChatOpenAI（OpenAI 兼容协议），
-    好处是超时/重试/错误类型都由它归一化，不用自己拼 HTTP。
-    """
+def _build_llm(cfg: LLMConfig):
+    """建 ChatOpenAI。代理环境变量的坑见 _sanitize_proxy_env。"""
     if not cfg.key:
         raise ModelAuthError("没有可用的模型 Key")
     try:
@@ -156,11 +165,28 @@ def chat_json(cfg: LLMConfig, prompt: str) -> dict:
     # 环境变量这一层也得修：SDK 内部还会自建客户端（给它传 http_client 也拦不住）
     fixed = _sanitize_proxy_env()
     try:
-        llm = ChatOpenAI(**kwargs)
+        return ChatOpenAI(**kwargs)
     finally:
         if fixed:
             os.environ["NO_PROXY"] = fixed
             os.environ["no_proxy"] = fixed
+
+
+def _content_text(resp) -> str:
+    txt = getattr(resp, "content", resp)
+    if isinstance(txt, list):                      # 少数后端回 content 数组
+        txt = "".join(str(x.get("text", x)) if isinstance(x, dict) else str(x)
+                      for x in txt)
+    return str(txt)
+
+
+def chat_json(cfg: LLMConfig, prompt: str) -> dict:
+    """发一次纯文字对话，要求回 JSON 对象。
+
+    走 langchain-openai 的 ChatOpenAI（OpenAI 兼容协议），
+    好处是超时/重试/错误类型都由它归一化，不用自己拼 HTTP。
+    """
+    llm = _build_llm(cfg)
     msgs = [{"role": "user", "content": prompt}]
     try:
         # response_format 有些服务商不认，认不认都不影响下面的兜底解析
@@ -170,12 +196,36 @@ def chat_json(cfg: LLMConfig, prompt: str) -> dict:
             resp = llm.invoke(msgs)
     except Exception as e:
         raise _as_error(e, cfg)
+    return _extract_json(_content_text(resp))
 
-    txt = getattr(resp, "content", resp)
-    if isinstance(txt, list):                      # 少数后端回 content 数组
-        txt = "".join(str(x.get("text", x)) if isinstance(x, dict) else str(x)
-                      for x in txt)
-    return _extract_json(str(txt))
+
+def _data_url(path: str) -> str:
+    import base64
+    ext = os.path.splitext(path)[1].lower().lstrip(".") or "png"
+    mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png",
+            "webp": "webp"}.get(ext, "png")
+    with open(path, "rb") as f:
+        return f"data:image/{mime};base64," + base64.b64encode(f.read()).decode()
+
+
+def chat_json_vision(cfg: LLMConfig, prompt: str, image_path: str) -> dict:
+    """发一次**带图**的对话，要求回 JSON 对象。
+
+    这就是「让模型读参考图」那一步。图片走 OpenAI 的 image_url + data URL 形式。
+    """
+    llm = _build_llm(cfg)
+    msgs = [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": _data_url(image_path)}},
+    ]}]
+    try:
+        try:
+            resp = llm.bind(response_format={"type": "json_object"}).invoke(msgs)
+        except Exception:
+            resp = llm.invoke(msgs)
+    except Exception as e:
+        raise _as_error(e, cfg)
+    return _extract_json(_content_text(resp))
 
 
 def _as_error(e: Exception, cfg: LLMConfig) -> Exception:
@@ -199,6 +249,13 @@ def _as_error(e: Exception, cfg: LLMConfig) -> Exception:
             f"（{cfg.model} @ {cfg.base}）"
     if status in (401, 403) or "Authentication" in name or "PermissionDenied" in name:
         return ModelAuthError(f"模型鉴权失败：HTTP {status or '401/403'} {where} —— {body}")
+    # 402 / 余额不足：**Key 和模型名都是对的**，只是账户没钱了。
+    # 不单独认出来的话，界面上会说成「模型」或「Key」的问题，让人白改半天。
+    if status == 402 or "insufficient" in body.lower() or "balance" in body.lower():
+        return ModelBalanceError(
+            f"模型账户余额不足{where} —— {body}。"
+            f"列模型那类接口不花 token 所以还是 200，一发对话才是 402；"
+            f"去服务商后台充值，不用改 Key 或模型名。")
     if status is None and "Timeout" in name:
         return SystemExit(f"模型调用超时{where} —— {body}")
     return SystemExit(f"模型调用失败：{name}"
