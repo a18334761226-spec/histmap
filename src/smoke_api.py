@@ -409,6 +409,15 @@ def main():
     # ── 5c) 分镜：同态帧合并的不变量 ──
     # 这条检查是为了防「界面说 6 帧、实际出 4 帧」这类对不上的问题。
     # 不写死具体题材的帧数（数据会改），只查关系式。
+    # 顺带查空/坏日期：界面上还没选日期就点一下是正常操作，
+    # 早先 _days('') 直接 IndexError → /api/plan 500。
+    for bad in ("", "乱写"):
+        st, r = call(B, "/api/plan", "POST",
+                     {"scene": "song", "date_from": bad, "date_to": bad}, timeout=60)
+        check(f"/api/plan 日期为 {bad!r} 时给全区间而不是 500",
+              st == 200 and (r.get("n_frames") or 0) > 0,
+              f"status={st} {str(r)[:140]}")
+
     for s in (scenes or []):
         ds = s.get("dates") or []
         if len(ds) < 2:

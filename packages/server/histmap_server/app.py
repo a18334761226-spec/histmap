@@ -461,17 +461,29 @@ def pick_dates(scene_id: str, date_from: str, date_to: str, max_frames: int):
 
     不是按天数均分 —— 每个题材能渲染的日期是离散的（唐只有 5 个年份，
     二战有 146 个），按天数切会切出一堆渲染不了的日期。
+
+    起止为空或写坏时，退化成**该题材的全区间**，而不是报 500：
+    界面上还没选日期就点一下是正常操作（编辑器用它展开分镜）。
     """
     ds = topics.get(scene_id).dates()
+    if not ds:
+        return []
     # 日期一律换算成序数再比。直接拿字符串比大小是错的：
     # '980-01-01' > '1040-01-01'（逐字符 '9' > '1'），
     # 会把 980 年这种三位数年份整个排到后面去，区间筛选全乱。
-    a, b = _days(date_from), _days(date_to)
-    lo, hi = min(a, b), max(a, b)
+    try:
+        lo = _days(date_from)
+    except (ValueError, TypeError):
+        lo = _days(ds[0])
+    try:
+        hi = _days(date_to)
+    except (ValueError, TypeError):
+        hi = _days(ds[-1])
+    lo, hi = min(lo, hi), max(lo, hi)
     sel = [d for d in ds if lo <= _days(d) <= hi]
     if not sel:
         # 区间内一个都没有 → 退化成「离区间端点最近的那个」
-        sel = [min(ds, key=lambda d: min(abs(_days(d) - lo), abs(_days(d) - hi)))] if ds else []
+        sel = [min(ds, key=lambda d: min(abs(_days(d) - lo), abs(_days(d) - hi)))]
     if len(sel) > max_frames:                 # 均匀抽稀，保留首尾
         step = (len(sel) - 1) / (max_frames - 1)
         sel = [sel[round(i * step)] for i in range(max_frames)]
@@ -479,12 +491,23 @@ def pick_dates(scene_id: str, date_from: str, date_to: str, max_frames: int):
 
 
 def _days(d: str) -> int:
-    """日期 → 序数。容忍 '807' / '807-1-1' / '0807-01-01' 各种写法。"""
+    """日期 → 序数。容忍 '807' / '807-1-1' / '0807-01-01' 各种写法。
+
+    空值或解析不出年份时抛 ValueError（**不是** IndexError）——
+    调用方需要能用一个 except 分清「日期格式不对」和「程序有 bug」。
+    早先 parts[0] 在空字符串上直接 IndexError，于是 /api/plan 传空日期
+    就是 500，而界面上「还没选日期就点一下」是完全正常的操作。
+    """
     from datetime import date as _d
     parts = [p for p in str(d)[:10].split("-") if p != ""]
-    y = int(parts[0])
-    m = int(parts[1]) if len(parts) > 1 else 1
-    dd = int(parts[2]) if len(parts) > 2 else 1
+    if not parts:
+        raise ValueError(f"空日期：{d!r}")
+    try:
+        y = int(parts[0])
+    except (TypeError, ValueError):
+        raise ValueError(f"日期里没有年份：{d!r}")
+    m = int(parts[1]) if len(parts) > 1 and str(parts[1]).isdigit() else 1
+    dd = int(parts[2]) if len(parts) > 2 and str(parts[2]).isdigit() else 1
     try:
         return _d(y, m, dd).toordinal()
     except ValueError:                     # 月份/日越界（脏数据）→ 夹到合法范围
@@ -839,9 +862,14 @@ def api_video(req: VideoReq):
     note = ""
     raw = raw_dates(req)
     if not req.frames:
-        lo, hi = sorted((_days(req.date_from), _days(req.date_to)))
-        in_range = sum(1 for d in (topics.get(req.scene).dates() or [])
-                       if lo <= _days(d) <= hi)
+        # 起止空/坏时 pick_dates 已经退化成全区间，这里也得跟着算，
+        # 不能直接 _days('') 抛出去（那是 500，而这是正常操作）。
+        ds_all = topics.get(req.scene).dates() or []
+        try:
+            lo, hi = sorted((_days(req.date_from), _days(req.date_to)))
+        except (ValueError, TypeError):
+            lo, hi = (_days(ds_all[0]), _days(ds_all[-1])) if ds_all else (0, 0)
+        in_range = sum(1 for d in ds_all if lo <= _days(d) <= hi)
         if in_range > len(raw):
             note = (f"区间内 {in_range} 个时间点，超过上限 {req.max_frames}，"
                     f"已均匀抽稀为 {len(raw)} 帧")
