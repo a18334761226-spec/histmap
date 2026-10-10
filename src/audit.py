@@ -294,6 +294,54 @@ def check_render(doc):
     ok(f"渲染 {tot - fail}/{tot} 帧成功")
 
 
+def check_agent_graph():
+    """模型编排图的结构自查。
+
+    为什么要查拓扑：起草流程改成 LangGraph 之后，「哪一步接哪一步」变成了
+    运行期的数据，而不是读代码就能看出来的控制流。改错一条边（比如
+    validate 直连 finalize，去掉修复环）不会报错，只会让「模型漏年份时
+    不再重试」—— 那种退化靠读代码很难发现，跑一遍图看边就一眼可见。
+    """
+    head("模型编排图")
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "packages", "agent"))
+        from histmap_agent.draft_graph import build_draft_graph
+    except Exception as e:
+        bad(f"起草图导入失败：{type(e).__name__}: {e}")
+        return
+    try:
+        g = build_draft_graph().get_graph()
+    except Exception as e:
+        bad(f"起草图编译失败：{type(e).__name__}: {e}")
+        return
+    nodes = set(g.nodes)
+    want_nodes = {"draft_geometry", "fetch_units", "assign_owners",
+                  "draft_gazetteer", "validate", "repair_prompt", "finalize"}
+    miss = sorted(want_nodes - nodes)
+    if miss:
+        bad(f"起草图缺节点：{miss}")
+    else:
+        ok(f"起草图 {len(want_nodes)} 个节点齐全")
+
+    pairs = {(e.source, e.target) for e in g.edges}
+    must = {
+        ("__start__", "draft_geometry"): "入口",
+        ("draft_geometry", "fetch_units"): "partition 支路",
+        ("draft_geometry", "draft_gazetteer"): "gazetteer 支路",
+        ("fetch_units", "assign_owners"): "拿到真名后分配归属",
+        ("assign_owners", "validate"): "分配完必须校验",
+        ("repair_prompt", "assign_owners"): "修复环（重试）",
+        ("validate", "repair_prompt"): "校验不过走修复",
+        ("validate", "finalize"): "校验通过收尾",
+        ("finalize", "__end__"): "出口",
+    }
+    gone = [why for p, why in must.items() if p not in pairs]
+    if gone:
+        bad(f"起草图少了这些边：{gone}")
+    else:
+        ok(f"起草图 {len(must)} 条关键边都在（含重试环）")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--render", action="store_true")
@@ -306,6 +354,7 @@ def main():
     doc = check_topics()
     check_geometry(doc)
     check_control(doc)
+    check_agent_graph()
     check_orphans(doc)
     check_docs(doc)
     if args.render:

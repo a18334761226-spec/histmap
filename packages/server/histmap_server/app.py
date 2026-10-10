@@ -40,11 +40,13 @@ from pydantic import BaseModel
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 PKG_PARENT = os.path.dirname(HERE)              # packages/server
-# 这四行是「零配置启动」的关键：把 packages/server 也放进来，
+# 这几行是「零配置启动」的关键：把 packages/server 也放进来，
 # `python packages\server\histmap_server\app.py` 才能 import histmap_server。
 # 少了它就必须先 set PYTHONPATH，而那正是新用户第一次跑必踩的一脚。
-for p in (os.path.join(ROOT, "packages", "core"), os.path.join(ROOT, "src"),
-          PKG_PARENT, HERE):
+# packages/agent 是模型编排层（起草图 / 风格图），new_topic 依赖它。
+for p in (os.path.join(ROOT, "packages", "core"),
+          os.path.join(ROOT, "packages", "agent"),
+          os.path.join(ROOT, "src"), PKG_PARENT, HERE):
     if p not in sys.path:
         sys.path.insert(0, p)
 
