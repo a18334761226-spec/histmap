@@ -42,19 +42,150 @@ class ModelBalanceError(ModelAuthError):
 
 @dataclass
 class LLMConfig:
-    """一次模型调用的全部参数。key 为空表示没配。"""
+    """一次模型调用的全部参数。key 为空表示没配。
+
+    **base 和 model 都不给厂商默认值**（原来默认写死硅基流动）。
+    理由：这个项目不替用户选厂商。以前默认值是硅基流动，于是「用户在界面选了
+    火山方舟（豆包）」时，任何一处没拿到调用方参数的代码路径都会悄悄打回硅基 ——
+    表现就是「我让你用豆包，你怎么老去找硅基」。现在默认是空：
+    没配就是没配，会明确报「没配 Key / 没指定服务商」，而不是偷偷换一家。
+    """
     key: str = ""
-    model: str = "Qwen/Qwen2.5-72B-Instruct"
-    base: str = "https://api.siliconflow.cn/v1"
+    model: str = ""
+    base: str = ""
     temperature: float = 0.2
     timeout: int = 180
     # 记下这次调用用的是哪来的 key，出错时要能说清（"你填的" / "服务端 .env 的"）
     label: str = ""
+    provider: str = ""
     extra: dict = field(default_factory=dict)
 
     @property
     def ready(self) -> bool:
-        return bool(self.key and self.model)
+        return bool(self.key and self.model and self.base)
+
+
+# ── 服务商登记表：**全项目唯一一处**「哪家叫什么、地址是什么」──────────
+# 加一家只改这里，不在别处写死任何厂商。env 是「去哪几个环境变量里找 key」，
+# 按顺序取第一个非空的。
+PROVIDERS: dict = {
+    "火山方舟": {
+        "base": "https://ark.cn-beijing.volces.com/api/v3",
+        "env": ("ARK_API_KEY", "VOLC_API_KEY", "VOLCENGINE_API_KEY",
+                "DOUBAO_API_KEY"),
+        "model": "doubao-seed-1-6-250615",
+    },
+    "DeepSeek 官方": {
+        "base": "https://api.deepseek.com",
+        "env": ("DEEPSEEK_API_KEY",),
+        "model": "deepseek-flash",
+    },
+    "硅基流动": {
+        "base": "https://api.siliconflow.cn/v1",
+        "env": ("SILICONFLOW_API_KEY", "SF_API_KEY"),
+        "model": "Qwen/Qwen2.5-72B-Instruct",
+    },
+    "阿里百炼": {
+        "base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "env": ("DASHSCOPE_API_KEY", "BAILIAN_API_KEY", "QWEN_API_KEY"),
+        "model": "qwen-plus",
+    },
+    "智谱": {
+        "base": "https://open.bigmodel.cn/api/paas/v4",
+        "env": ("ZHIPU_API_KEY", "GLM_API_KEY"),
+        "model": "glm-4-plus",
+    },
+    "魔搭": {
+        "base": "https://api-inference.modelscope.cn/v1",
+        "env": ("MODELSCOPE_TOKEN", "MODELSCOPE_API_KEY"),
+        "model": "Qwen/Qwen2.5-72B-Instruct",
+    },
+}
+
+
+def _env_file() -> dict:
+    """读仓库根目录的 .env（只在需要时读，结果不缓存 —— 用户可以随时改）。"""
+    import os as _os
+    here = _os.path.dirname(_os.path.abspath(__file__))
+    root = _os.path.dirname(_os.path.dirname(_os.path.dirname(here)))
+    p = _os.path.join(root, ".env")
+    out: dict = {}
+    if _os.path.exists(p):
+        for line in open(p, encoding="utf-8"):
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip().strip('"').strip("'")
+    return out
+
+
+def server_default(provider: str = "", model: str = "") -> LLMConfig:
+    """服务端默认用哪家、哪个模型。**不偏向任何厂商。**
+
+    优先级：
+      1. 显式传入的 provider / model
+      2. `.env` 里的 HISTMAP_PROVIDER（想固定用哪家就写它）
+      3. `.env` / 环境变量里**唯一**配了 key 的那一家
+      4. 配了多家又没指定 → 报错，让人明确选一家
+             （以前这里会默默挑硅基流动，于是「我让你用豆包」变成「你怎么老去找硅基」）
+
+    `.env` 里认的通用名（优先级最高，用它就不必记各家的变量名）：
+        HISTMAP_API_KEY / HISTMAP_BASE / HISTMAP_MODEL / HISTMAP_PROVIDER
+    """
+    import os
+    env = dict(_env_file())
+    env.update({k: v for k, v in os.environ.items() if k not in env})
+
+    gen_key = env.get("HISTMAP_API_KEY") or ""
+    gen_base = (env.get("HISTMAP_BASE") or "").rstrip("/")
+    gen_model = env.get("HISTMAP_MODEL") or ""
+    if gen_key:
+        return LLMConfig(key=gen_key, base=gen_base or "",
+                         model=model or gen_model,
+                         provider=provider or env.get("HISTMAP_PROVIDER") or "",
+                         label=".env 的 HISTMAP_API_KEY")
+
+    want = provider or env.get("HISTMAP_PROVIDER") or ""
+    if want:
+        p = PROVIDERS.get(want)
+        if not p:
+            raise SystemExit(
+                f".env 里指定的 HISTMAP_PROVIDER=「{want}」不认识。"
+                f"可选：{'、'.join(PROVIDERS)}")
+        for e in p["env"]:
+            if env.get(e):
+                return LLMConfig(key=env[e], base=p["base"],
+                                 model=model or gen_model or p["model"],
+                                 provider=want, label=f".env 的 {e}")
+        raise SystemExit(
+            f"指定了用「{want}」，但 .env 里没有它的 Key。"
+            f"请填 {' 或 '.join(p['env'])} 之一。")
+
+    have = []
+    for name, p in PROVIDERS.items():
+        for e in p["env"]:
+            if env.get(e):
+                have.append((name, e, env[e], p))
+                break
+    if not have:
+        raise SystemExit(
+            "服务端没有配任何模型的 Key。任选一家填进 .env（推荐用通用名）：\n"
+            "    HISTMAP_API_KEY=你的key\n"
+            "    HISTMAP_BASE=https://ark.cn-beijing.volces.com/api/v3\n"
+            "    HISTMAP_MODEL=doubao-seed-1-6-250615\n"
+            f"或按厂商名填：{'、'.join(PROVIDERS)}")
+    if len(have) > 1:
+        raise SystemExit(
+            "服务端配了多家的 Key，但没说要默认用哪家 —— 我不替你挑"
+            f"（以前会默默挑硅基流动，那正是「选了豆包却打到硅基」的原因）。\n"
+            f"请在 .env 里加一行指定：\n"
+            f"    HISTMAP_PROVIDER={' 或 '.join(n for n, _, _, _ in have)}\n"
+            f"目前配置了的：{'、'.join(f'{n}({e})' for n, e, _, _ in have)}")
+    name, e, k, p = have[0]
+    return LLMConfig(key=k, base=p["base"], model=model or gen_model or p["model"],
+                     provider=name, label=f".env 的 {e}")
+
 
 
 def _strip_fence(txt: str) -> str:

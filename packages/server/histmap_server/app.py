@@ -352,6 +352,148 @@ async def style_extract(request: Request, file: UploadFile = File(...),
     return out
 
 
+class ModelImageReq(BaseModel):
+    """**直接让大模型生成图片** —— 不做几何拼装。
+
+    这个接口存在的理由：用户要的就是「大模型生图」。项目此前一直在优化
+    「代码画图」那条路，把模型生图当成要避免的事；但对「图好不好看」这件事，
+    决定权应该在用户手上，而不是我替他judge。所以把它做成一条正式的路：
+
+      mode = "restyle"   给模型一张代码画的地图，让它整张重画成有质感的图
+                         （地理是对的，但模型可能改动边界和标注）
+      mode = "txt2img"   什么都不给，纯文生图。地理**不可能准**，
+                         适合当海报/概念图，不适合当史实图
+
+    两条路都会**如实回报**保真度（NCC / 色块保真），但**不做拦截** ——
+    好不好用由用户看图和数字自己判断。
+    """
+    scene: str
+    date: str = ""
+    theme: str = "light"
+    size: str = "16x9"
+    mode: str = "restyle"
+    prompt: str = ""              # 留空则按题材自动写一段
+    negative_prompt: str = ""
+    img_model: str = ""
+    img_base: str = ""
+    steps: int = 30
+    seed: int | None = None
+
+
+@app.post("/api/render/model")
+def api_render_model(req: ModelImageReq, request: Request,
+                     x_api_key: str | None = Header(None, alias="X-Api-Key"),
+                     x_base_url: str | None = Header(None, alias="X-Base-Url")):
+    """大模型生图（不做几何拼装）。"""
+    import stylize as Z
+    t = topics.get(req.scene)
+    if not t:
+        raise HTTPException(404, "没有这个题材")
+
+    host = (request.client.host if request.client else "") or ""
+    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    key = (x_api_key or "").strip()
+    label = "你填的 Key"
+    srv_base = ""
+    if not key and is_local:
+        try:
+            from histmap_agent.llm import server_default
+            d = server_default()
+            key, label, srv_base = d.key, d.label, d.base
+        except SystemExit as e:
+            raise HTTPException(401, str(e))
+    if not key:
+        raise HTTPException(401, "生图要一个图像模型的 Key（设置里填，或本机 .env）")
+
+    base_url = (req.img_base or x_base_url or "").strip() or srv_base
+    if not base_url:
+        raise HTTPException(400, "要指定图像模型的接口地址（设置里的「API 服务」）")
+
+    # **图像模型不能拿对话模型来凑**。踩过的坑：这里原来回落到
+    # `server_default().model`，而那是**对话**模型（Qwen2.5-72B），
+    # 拿它去打 /images/generations 得到的是 `403 Illegal operation`。
+    # 图像模型有自己的一份清单（MODELS["image_edit"]），按地址挑。
+    model = (req.img_model or "").strip()
+    if not model:
+        b = base_url.rstrip("/")
+        cand = [m for m in (MODELS.get("image_edit") or [])
+                if (m.get("base") or "").rstrip("/") == b]
+        if not cand:
+            raise HTTPException(400, (
+                f"没有为 {b} 配图像模型名。请在请求里给 img_model，"
+                f"或在 .env 里配 HISTMAP_IMAGE_MODEL。"
+                f"已知的图像模型：{[(m['id'], m['base']) for m in (MODELS.get('image_edit') or [])]}"))
+        model = cand[0]["id"]
+
+    stamp = int(time.time() * 1000)
+    base_path = ""
+    if req.mode == "restyle":
+        date = req.date or (t.dates() or [""])[0]
+        if not date:
+            raise HTTPException(400, "这个题材没有可渲染的日期")
+        try:
+            img = topics.render(req.scene, date, req.theme, req.size)
+        except Exception as e:
+            raise HTTPException(500, f"底图渲染失败：{type(e).__name__}: {e}")
+        base_path = os.path.join(MEDIA, f"modelbase_{req.scene}_{stamp}.png")
+        img.save(base_path)
+
+    # 默认提示词：**只描述质感，不提地图内容** —— 提了它就会去重画内容
+    prompt = (req.prompt or "").strip() or (
+        "An antique hand-drawn historical atlas map. Aged parchment paper with "
+        "visible fibre grain and soft foxing stains, muted earthy low-saturation "
+        "colours, fine ink linework, subtle vignette, warm toned, printed in the "
+        "style of a 19th-century atlas plate.")
+    out_path = os.path.join(MEDIA, f"modelgen_{req.scene}_{stamp}.png")
+    prov = Z.SiliconFlow(key, model=model, base=base_url)
+    try:
+        if req.mode == "txt2img":
+            url, secs, seed = prov.text2img(
+                prompt, size="1024x1024", steps=req.steps, seed=req.seed,
+                negative_prompt=req.negative_prompt or
+                "text, letters, watermark, signature, logo, blurry, low quality")
+        else:
+            url, secs, seed = prov.run(base_path, prompt, steps=req.steps,
+                                       seed=req.seed)
+        Z._download(url, out_path)
+    except Exception as e:
+        msg = f"{type(e).__name__}: {str(e)[:400]}"
+        # 「远程主机强迫关闭了一个现有的连接」在生图这条路上几乎总是
+        # **Key 不对**：图是 base64 塞进请求体上传的，服务商验鉴权失败后
+        # 会直接掐断连接，而不是好好地回一个 401。原样抛出会让人以为是网络问题，
+        # 于是去查代理、查防火墙，白花时间。
+        if "10054" in msg or "ConnectionReset" in msg or "forcibly closed" in msg \
+                or "远程主机强迫关闭" in msg:
+            msg += (f"\n（这多半是 Key 不对：图像是随请求体上传的，"
+                    f"服务商验不过就直接断连，而不是回 401。"
+                    f"请先用「设置 → 测试连接」确认真实可用的 Key；"
+                    f"当前用的地址是 {base_url}）")
+        raise HTTPException(502, f"模型生图失败：{msg}")
+
+    out = {"image": f"/media/api/{os.path.basename(out_path)}",
+           "model": model, "base": base_url, "mode": req.mode,
+           "prompt": prompt, "seconds": round(secs, 1), "seed": seed,
+           "key_source": label}
+    if base_path:
+        out["base"] = f"/media/api/{os.path.basename(base_path)}"
+        # 如实回报保真度，但**不拦截** —— 用不用由用户看图决定
+        try:
+            from PIL import Image
+            s = Image.open(out_path)
+            b = Image.open(base_path)
+            if s.size != b.size:
+                s.convert("RGB").resize(b.size, Image.LANCZOS).save(out_path)
+                out["resized_to"] = list(b.size)
+            out["fidelity"] = Z.check_fidelity(base_path, out_path)
+            out["fidelity"]["note"] = (
+                "这是模型图和代码底图的差异。NCC 低说明模型改了内容"
+                "（很可能重画了边界或把中文标注画成乱码笔画），"
+                "但**是否可接受由你判断** —— 这个接口只回报，不拦截。")
+        except Exception as e:
+            out["fidelity_error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
 class StyleTextureReq(BaseModel):
     """用模型生成纸纹，再把代码画好的地图贴上去。"""
     scene: str
