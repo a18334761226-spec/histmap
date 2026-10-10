@@ -1930,6 +1930,41 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
             "used": used}
 
 
+class TopicDeleteReq(BaseModel):
+    id: str
+
+
+@app.post("/api/topic/delete")
+def api_topic_delete(req: TopicDeleteReq,
+                     x_api_key: str | None = Header(None, alias="X-Api-Key")):
+    """删掉一个题材（注册条目 + 控制表 + 几何文件）。
+
+    为什么用 POST 而不是 DELETE：本项目其它接口都是 POST，前端那个 api()
+    统一带 headers，加一个方法只会多一处不一致。语义上这是"执行一个动作"。
+    """
+    import new_topic as NT
+    tid = (req.id or "").strip()
+    if not tid:
+        raise HTTPException(400, "没给题材 id")
+    # 内置题材（随仓库分发的那些）不让删 —— 删了仓库里就少一个，
+    # 而用户多半只是想让页签清爽一点。要删请改 data/topics/topics.json。
+    builtin = {"mingqing", "ww1-europe", "ww2-europe", "tang", "song",
+               "us-civil-war", "deu-unification", "india-pakistan-partition",
+               "french-revolution"}
+    if tid in builtin:
+        raise HTTPException(400, (
+            f"「{tid}」是随仓库自带的内置题材，不能在界面上删。"
+            f"它不需要可以放着不看；真要移除请改 data/topics/topics.json。"))
+    try:
+        rep = NT.remove(tid, quiet=True)
+    except SystemExit as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"删除失败：{type(e).__name__}: {e}")
+    _reload_topics()
+    return rep
+
+
 @app.post("/api/topic/create")
 def api_topic_create(req: TopicCreateReq,
                      x_api_key: str | None = Header(None, alias="X-Api-Key")):

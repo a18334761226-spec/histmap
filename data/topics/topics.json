@@ -264,6 +264,65 @@
       "merge_by": "owner",
       "source_note": "本地图使用的是现代国家的行政边界，而非1789年至1799年间的实际边界。",
       "license_note": "geoBoundaries FRA 为 CC BY 4.0（须署名）；geoBoundaries DEU 为 CC BY 4.0（须署名）；geoBoundaries AUT 为 CC BY 4.0（须署名）；geoBoundaries BEL 为 CC BY 4.0（须署名）；geoBoundaries NLD 为 CC BY 4.0（须署名）"
+    },
+    {
+      "id": "ming-dynasty-nine-borders",
+      "title": "明代九边",
+      "subtitle": "明代北方九大军事边镇的建制与分布格局演变",
+      "kind": "dynasty",
+      "bbox": [
+        96.3,
+        33.1,
+        126.29,
+        44.54
+      ],
+      "years": [
+        1449,
+        1571,
+        1619,
+        1636,
+        1644
+      ],
+      "units": "ming-dynasty-nine-borders_province_gazetteer.json",
+      "control": "ming-dynasty-nine-borders_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1619-01-01",
+      "default_size": "16x9",
+      "merge_by": "unit",
+      "source_note": "用的是现代行政界、不是当年的界线，底图基于现代中国县级行政边界，军镇辖域映射至对应现代县域",
+      "license_note": "历史属性取自《明史·兵志》，边界数据采用CC BY 4.0开源许可"
+    },
+    {
+      "id": "ming-nine-border",
+      "title": "明代九边",
+      "subtitle": "明长城沿线九个军镇的防区与北疆控制格局",
+      "kind": "dynasty",
+      "bbox": [
+        96.21,
+        33.1,
+        129.18,
+        45.84
+      ],
+      "years": [
+        1381,
+        1421,
+        1449,
+        1616,
+        1621,
+        1644
+      ],
+      "units": "ming-nine-border_province_gazetteer.json",
+      "control": "ming-nine-border_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1616-01-01",
+      "default_size": "16x9",
+      "merge_by": "unit",
+      "source_note": "底图为现代县界（gazetteer），用的是现代行政界、不是明代的界线。九边军镇防区依史料记载的控制范围对应到现代县级单元，仅表示大致归属，不表示精确边界。九边包括辽东、蓟州、宣府、大同、山西、延绥、宁夏、固原、甘肃等镇。",
+      "license_note": "遵循原始现代县界数据集的许可，通常为 CC BY 4.0 或公有领域。"
     }
   ]
 }

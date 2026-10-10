@@ -102,6 +102,12 @@ header{height:52px;display:flex;align-items:center;gap:16px;padding:0 14px;
 .tab.off{color:var(--text-3);text-decoration:line-through;text-decoration-color:var(--err)}
 .tab.off em{color:var(--err)}
 .tab em{font-style:normal;font-size:10.5px;color:var(--text-3);font-family:var(--mono)}
+/* 页签上的删除按钮。平时很淡，hover 页签才明显 —— 否则一排 × 会把题材名挤没。
+   点击热区比字形大一些：8px 的字太小，不容易点中。 */
+.tab .x{margin-left:1px;padding:0 3px;border-radius:4px;font-size:13px;line-height:1;
+  color:var(--text-3);opacity:.45;cursor:pointer;flex:none}
+.tab:hover .x{opacity:1}
+.tab .x:hover{background:var(--err);color:#fff}
 .hright{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
 /* 缺数据的提示条：云端部署时最常见的问题，直接摆在顶栏下面 */
 .warnbar{display:none;flex:none;padding:7px 14px;background:rgba(249,112,102,.1);
@@ -729,13 +735,42 @@ async function boot(){
 function tabs(){
   // 题材页签后面**常驻一个「+」** —— 想找别的题材的人会往这排看，
   // 而不是去看顶栏角落（早先只有顶栏那个小按钮，等于藏起来了）。
+  // 每个页签上一个 × ：自己建的题材要能删掉，否则试几次就积一排
+  // （实测一排里躺着「复现用题材2」「验证题材」这种半成品，没法收拾）。
+  // 内置题材不给 ×，删了仓库就少一个；服务端也会再拒一次。
+  const BUILTIN = ['mingqing','ww1-europe','ww2-europe','tang','song',
+    'us-civil-war','deu-unification','india-pakistan-partition','french-revolution'];
   $('#tabs').innerHTML = SCENES.map(s => {
     const off = s.ready === false;
+    const canDel = !BUILTIN.includes(s.id);
     return `<button class="tab${s.id === st.scene ? ' on' : ''}${off ? ' off' : ''}"
        data-id="${esc(s.id)}" ${off ? `title="缺数据：${esc(s.missing)}"` : ''}>
-       <i></i>${esc(s.title)}<em>${off ? '缺数据' : (s.dates||[]).length}</em></button>`;
+       <i></i>${esc(s.title)}<em>${off ? '缺数据' : (s.dates||[]).length}</em>${
+       canDel ? `<span class="x" data-del="${esc(s.id)}"
+         title="删除这个题材（连同它的控制表和几何文件）">×</span>` : ''}</button>`;
   }).join('') + `<button class="tab add" id="tabAdd" title="这个列表里没有你要的？让系统自己建一个">
        ＋ 别的题材</button>`;
+  $$('#tabs .tab .x').forEach(x => x.onclick = async ev => {
+    ev.stopPropagation();          // 别让它顺带切到这个题材
+    const id = x.dataset.del;
+    const s = SCENES.find(v => v.id === id);
+    if (!confirm(`删除题材「${s ? s.title : id}」？\n\n` +
+                 `会一起删掉它的控制表和已构建的几何文件，不能撤销。`)) return;
+    try {
+      const r = await api('/api/topic/delete', {method:'POST',
+        body: JSON.stringify({id})});
+      const j = await r.json();
+      if (!r.ok) throw new Error(errText(j.detail, '删除失败'));
+      // 删的是当前这个就换到第一个还能用的
+      if (st.scene === id) st.scene = (SCENES.find(v => v.id !== id) || {}).id;
+      SCENES = ((await (await fetch('/api/scenes')).json()).scenes) || [];
+      if (!SCENES.some(v => v.id === st.scene)) st.scene = (SCENES[0]||{}).id;
+      const cur = scene();
+      if (cur){ st.theme = (cur.themes||['dark'])[0]; st.size = cur.default_size || '16x9'; }
+      tabs(); syncParams(); fillRange(); rebuild(); renderOne();
+      toast(`已删除「${s ? s.title : id}」（清理 ${(j.removed||[]).length} 个文件）`);
+    } catch(e){ toast(e.message); }
+  });
   $$('#tabs .tab[data-id]').forEach(b => b.onclick = () => {
     if (b.dataset.id === st.scene) return;
     st.scene = b.dataset.id;

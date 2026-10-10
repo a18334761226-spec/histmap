@@ -415,6 +415,40 @@ def _remap_control(spec: dict, mapping: dict) -> dict:
     return out
 
 
+def remove(tid: str, quiet: bool = False) -> dict:
+    """删掉一个题材：注册条目 + 控制表 + 构建出来的几何。
+
+    **三处必须一起删**，少一处就留孤儿：题材列表里没了，但 data/control 和
+    data/processed 里还留着它的文件 —— 那种残留不会报错，只会越积越多，
+    而且哪天换个同 id 的题材建回来时，会拿旧的几何当新的用（实测过）。
+
+    只删这个题材自己的文件（按 `<tid>_` 前缀），不碰别人。
+    """
+    doc = json.load(open(TOPICS, encoding="utf-8"))
+    items = doc["topics"] if isinstance(doc, dict) else doc
+    hit = [t for t in items if str(t.get("id")) == tid]
+    if not hit:
+        raise SystemExit(f"没有这个题材：{tid}")
+    items[:] = [t for t in items if str(t.get("id")) != tid]
+    json.dump(doc, open(TOPICS, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+
+    removed = []
+    for d in (CTRL, PROC):
+        if not os.path.isdir(d):
+            continue
+        for f in os.listdir(d):
+            if f.startswith(tid + "_") or f == f"{tid}.json":
+                try:
+                    os.remove(os.path.join(d, f))
+                    removed.append(f)
+                except OSError:
+                    pass
+    if not quiet:
+        print(f"  已删除题材 {tid}（{len(removed)} 个数据文件）")
+    return {"id": tid, "removed": removed}
+
+
 def _register(entry: dict) -> None:
     doc = json.load(open(TOPICS, encoding="utf-8"))
     doc["topics"] = [t for t in doc["topics"] if t.get("id") != entry["id"]]
