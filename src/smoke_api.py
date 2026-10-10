@@ -487,6 +487,22 @@ def main():
           st == 200 and (kt or {}).get("step") in ("key", "balance"),
           f"step={(kt or {}).get('step')} {str((kt or {}).get('detail'))[:140]}")
 
+    # **图像模型的接口地址必须由模型决定**。踩过的坑：stylize.SiliconFlow 的
+    # base 写死在 api.siliconflow.cn，而清单里「豆包 Seedream」那条的 base
+    # 指向火山方舟 —— 那个字段从来没被用过。于是选豆包时，请求带着豆包的
+    # 模型名和火山的 Key 打到了硅基流动。这里查接口有没有把实际用的地址报回来。
+    st, tx = call(B, "/api/style/texture", "POST",
+                  {"scene": "tang", "date": "807-01-01", "theme": "light",
+                   "size": "16x9", "mode": "texture",
+                   "image_prompt": "aged parchment texture",
+                   "img_model": "doubao-seedream-3-0-t2i-250415"}, timeout=600)
+    check("/api/style/texture 按模型回报了图像接口地址（豆包 → 火山方舟）",
+          st == 200 and "volces.com" in str((tx or {}).get("img_base")),
+          f"status={st} img_base={(tx or {}).get('img_base')}")
+    check("调用方给了提示词就不再去问一次视觉模型",
+          any("不再问一次视觉模型" in l for l in ((tx or {}).get("log") or [])),
+          str((tx or {}).get("log"))[:160])
+
     st, r = call(B, "/api/key/test", "POST", {},
                  headers={"X-Api-Key": "sk-definitely-a-wrong-key-0000000000000000"})
     check("/api/key/test 错 key 时把问题指到 key 这一项",

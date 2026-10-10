@@ -361,7 +361,12 @@ class StyleTextureReq(BaseModel):
     ref_path: str = ""            # 参考图（/api/style/extract 返回的那个）
     style_desc: str = ""
     image_prompt: str = ""        # 前面抽出来的提示词；给了就用它，不再问一次视觉模型
+    # 图像模型。**base 必须能由调用方给**：豆包 Seedream 在火山方舟、
+    # Qwen-Image 在硅基流动，两家的模型名互不相认。早先 base 写死在
+    # stylize.SiliconFlow 里、model 也写死成 Qwen/Qwen-Image，
+    # 于是清单里那条「豆包 Seedream」根本不可能被用上 —— 典型的「配了不生效」。
     img_model: str = "Qwen/Qwen-Image"
+    img_base: str = ""
     mode: str = "texture"         # texture（默认，安全）| edit（图生图，实测会毁标注）
 
 
@@ -406,18 +411,34 @@ def api_style_texture(req: StyleTextureReq, request: Request,
 
     from histmap_agent import LLMConfig
     from histmap_agent.style_graph import run_style_graph
-    cfg = LLMConfig(key=key,
-                    base=(x_base_url or "").strip()
-                    or os.environ.get("SILICONFLOW_BASE")
-                    or "https://api.siliconflow.cn/v1",
-                    model=(x_model or "").strip() or "Qwen/Qwen3-VL-32B-Instruct",
+    # 视觉模型也要按接口地址挑 —— 否则调用方选了火山方舟，我们却拿
+    # 一个 Qwen 的视觉模型名去打火山（跟图像模型那次是同一个错）。
+    # 调用方已经把提示词给全了的话，这一步根本用不到，prompt_override
+    # 会让图直接跳过 vlm_describe，所以挑不出来也不影响。
+    vlm_base = ((x_base_url or "").strip()
+                or os.environ.get("SILICONFLOW_BASE")
+                or "https://api.siliconflow.cn/v1")
+    cfg = LLMConfig(key=key, base=vlm_base,
+                    model=vision_model_for(vlm_base, (x_model or "").strip())
+                    or "Qwen/Qwen3-VL-32B-Instruct",
                     temperature=0.3)
     out_path = os.path.join(MEDIA, f"styled_{req.scene}_{int(time.time()*1000)}.png")
     ref = req.ref_path or base           # 没给参考图就拿底图当参考（只取质感）
+    # 图像模型的地址：调用方给了就用；没给就从清单里按模型名反查
+    # （清单里豆包那条的 base 是火山方舟），再兜底到硅基流动。
+    img_base = (req.img_base or "").strip()
+    if not img_base:
+        hit = next((m for m in (MODELS.get("image_edit") or [])
+                    if m.get("id") == req.img_model), None)
+        img_base = (hit or {}).get("base") or "https://api.siliconflow.cn/v1"
     try:
         r, _ = run_style_graph(ref, base_path=base, vlm_cfg=cfg, img_key=key,
-                               img_model=req.img_model, out_path=out_path,
-                               mode=req.mode, verbose=False)
+                               img_model=req.img_model, img_base=img_base,
+                               out_path=out_path,
+                               mode=req.mode, verbose=False,
+                               # 调用方给过提示词就用它，不再问一次视觉模型：
+                               # 更省更快，也避免用错家的视觉模型名。
+                               prompt_override=(req.image_prompt or "").strip())
     except Exception as e:
         raise HTTPException(500, f"生成失败：{type(e).__name__}: {str(e)[:300]}")
     styled = r.get("styled_path") or ""
@@ -425,6 +446,7 @@ def api_style_texture(req: StyleTextureReq, request: Request,
         "base": f"/media/api/{os.path.basename(base)}",
         "image": f"/media/api/{os.path.basename(styled)}" if styled else "",
         "mode": r.get("mode"), "verdict": r.get("verdict"),
+        "img_model": req.img_model, "img_base": img_base,
         "style_desc": r.get("style_desc") or req.style_desc,
         "image_prompt": r.get("image_prompt") or req.image_prompt,
         "blank": r.get("blank") or {}, "fidelity": r.get("fidelity") or {},

@@ -127,12 +127,27 @@ def _b64_image(path: str) -> str:
 
 # ── 后端 ────────────────────────────────────────────────────
 class SiliconFlow:
-    """同步：提交后响应里直接给图片 URL。"""
-    name = "siliconflow"
-    base = "https://api.siliconflow.cn/v1"
+    """OpenAI 兼容的**同步**图像接口：提交后响应里直接给图片 URL。
 
-    def __init__(self, key, model=None):
-        self.key, self.model = key, model or DEFAULT_MODEL["siliconflow"]
+    名字叫 SiliconFlow 是历史原因（最早只接了这一家）。现在硅基流动和
+    火山方舟（豆包 Seedream）都走这个协议，**所以 base 必须能传进来**。
+
+    踩过的坑：`base` 原来是写死的类属性 `https://api.siliconflow.cn/v1`，
+    而模型清单里明明有豆包 Seedream 那一条（base 指向火山方舟）——
+    那个 base **从来没被用过**。于是选豆包时，请求带着**豆包的模型名和
+    火山的 Key 打到了硅基流动的域名**，必然失败或者返回垃圾。
+    跟之前那次 401 是同一类错：选了哪家，就得用哪家的地址。
+    """
+
+    name = "siliconflow"
+    DEFAULT_BASE = "https://api.siliconflow.cn/v1"
+
+    def __init__(self, key, model=None, base=None):
+        self.key = key
+        self.model = model or DEFAULT_MODEL["siliconflow"]
+        # 去掉结尾斜杠：有些平台注入的地址带尾斜杠，拼出来会变成
+        # //images/generations，少数网关会因此 404
+        self.base = (base or self.DEFAULT_BASE).rstrip("/")
 
     def run(self, image_path, prompt, steps=30, seed=None, timeout=300):
         h = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",

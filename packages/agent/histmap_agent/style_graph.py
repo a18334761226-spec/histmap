@@ -77,6 +77,14 @@ class StyleState(TypedDict, total=False):
     vlm_cfg: LLMConfig             # 视觉模型（读参考图）
     img_key: str                   # 图像模型的 key
     img_model: str
+    # 图像模型的接口地址。**必须能传进来**：豆包 Seedream 在火山方舟、
+    # Qwen-Image 在硅基流动，两家的模型名互不相认。早先 base 写死在
+    # stylize.SiliconFlow 里，模型清单里那个 base 字段从来没被用过。
+    img_base: str
+    # 调用方已经给了提示词时，就不用再问一次视觉模型。
+    # 省一次模型调用（更快更省），也避免「调用方选了火山方舟、
+    # 我们却拿一个 Qwen 的视觉模型名去打火山」这种错配。
+    prompt_override: str
     mode: str                      # "texture"（默认，安全）| "edit"（图生图，实测会毁标注）
     log: Annotated[list[str], operator.add]
 
@@ -117,7 +125,15 @@ def vlm_describe(state: StyleState) -> dict:
 
     这就是「抽取风格和提示词」里的提示词那一半 —— 纯代码提取不出"这套风格
     该怎么用文字描述"，而写提示词恰好是模型擅长的事。
+
+    调用方已经给了提示词（prompt_override）时直接跳过：那说明它在更早的
+    一步已经抽过了（比如 /api/style/extract?vlm=true 抽完再把提示词传进来）。
+    再问一次模型既慢又费，还会引入错配 —— 调用方选了火山方舟，
+    我们却拿一个 Qwen 的视觉模型名去火山打。
     """
+    if (state.get("prompt_override") or "").strip():
+        return {"prompt": state["prompt_override"].strip(),
+                "log": ["用调用方已抽好的提示词，不再问一次视觉模型"]}
     try:
         v = chat_json_vision(state["vlm_cfg"], STYLE_VLM_PROMPT,
                              state["ref_path"])
@@ -159,7 +175,8 @@ def generate_sample(state: StyleState) -> dict:
     if not state.get("base_path") or not os.path.exists(state["base_path"]):
         return {"styled_path": "", "log": ["没有底图，跳过生成"]}
 
-    prov = Z.SiliconFlow(key, model=state.get("img_model") or None)
+    prov = Z.SiliconFlow(key, model=state.get("img_model") or None,
+                         base=state.get("img_base") or None)
     prompt = state.get("prompt") or ""
     # 负向提示词单独给：在正向里写「不要文字」远不如放进 negative 有效
     full = (prompt + "\n\nKeep every border, colour block and label exactly "
@@ -222,7 +239,8 @@ def generate_texture(state: StyleState) -> dict:
         ROOT, "output", "api", "style_texture.png")
     out = os.path.splitext(out)[0] + "_texture.png"
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    prov = Z.SiliconFlow(key, model=state.get("img_model") or None)
+    prov = Z.SiliconFlow(key, model=state.get("img_model") or None,
+                         base=state.get("img_base") or None)
     # 纸纹按底图的尺寸生成，省一次重采样
     size = "1024x1024"
     try:
@@ -234,8 +252,12 @@ def generate_texture(state: StyleState) -> dict:
     except Exception:
         pass
     try:
+        # model 传空：用 prov 上那个（= 调用方选的模型）。
+        # 原来这里写死 `model="Qwen/Qwen-Image"`，于是就算调用方选了
+        # 豆包 Seedream，发出去的还是 Qwen 的名字 —— 跟 base 写死是同一个
+        # 问题的另一半。prov.model 已经在 __init__ 里兜了默认值。
         url, secs, seed = prov.text2img(prompt + TEXTURE_PROMPT_TAIL,
-                                        model="Qwen/Qwen-Image", size=size,
+                                        size=size,
                                         negative_prompt=STYLE_NEGATIVE_PROMPT)
         Z._download(url, out)
     except Exception as e:
@@ -595,7 +617,9 @@ _GRAPH = None
 
 def run_style_graph(ref_path: str, base_path: str = "", vlm_cfg: LLMConfig | None = None,
                     img_key: str = "", img_model: str = "", out_path: str = "",
-                    mode: str = "texture", verbose: bool = True) -> tuple[dict, list[str]]:
+                    mode: str = "texture", verbose: bool = True,
+                    img_base: str = "",
+                    prompt_override: str = "") -> tuple[dict, list[str]]:
     """跑一遍风格图。返回 (结果, 过程记录)。
 
     mode:
@@ -603,6 +627,9 @@ def run_style_graph(ref_path: str, base_path: str = "", vlm_cfg: LLMConfig | Non
       "edit"           —— 图生图直接编辑地图。**实测会毁掉中文标注**
                           （NCC 0.84、`所属政权` 变 `所鹰政权`），
                           保留它只是为了能复现和对照，不要用于出片。
+
+    img_base：图像模型的接口地址。豆包 Seedream 在火山方舟、
+    Qwen-Image 在硅基流动，**两家的模型名互不相认**，所以必须由调用方给。
     """
     global _GRAPH
     if _GRAPH is None:
@@ -610,7 +637,9 @@ def run_style_graph(ref_path: str, base_path: str = "", vlm_cfg: LLMConfig | Non
     out = _GRAPH.invoke({
         "ref_path": ref_path, "base_path": base_path or "",
         "vlm_cfg": vlm_cfg or LLMConfig(), "img_key": img_key,
-        "img_model": img_model, "out_path": out_path, "mode": mode,
+        "img_model": img_model, "img_base": img_base,
+        "prompt_override": prompt_override,
+        "out_path": out_path, "mode": mode,
         "attempts": 0, "tighten": 0, "log": [],
     }, {"recursion_limit": 60})
     log = list(out.get("log") or [])
