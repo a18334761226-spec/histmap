@@ -98,6 +98,15 @@ def main():
     st, page = call(B, "/")
     check("首页 / 返回 HTML", st == 200 and b"<html" in page.lower())
 
+    # 字体必须能画中文。这条是云端事故换来的：容器里 render.py 只找 Windows 字体，
+    # 落空后退回 PIL 位图字体，于是地图色块完美但**所有中文标注消失**，
+    # 而 /api/health、渲染接口、图片尺寸颜色全都是正常的 —— 自动化检查全绿。
+    st, h = call(B, "/api/health", timeout=60)
+    f = (h or {}).get("font") or {}
+    check("健康检查报告字体，且字体能画中文",
+          st == 200 and f.get("ok") is True,
+          f"font={f} —— 画不出中文的话图上标注会整片消失（Linux 装 fonts-noto-cjk）")
+
     # 质感小样：每个预设都该有一张真渲染出来的样图，而且是能下载的
     st, s2 = call(B, "/api/styles", timeout=900)
     presets2 = (s2 or {}).get("presets") or []

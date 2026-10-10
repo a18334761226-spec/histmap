@@ -5,6 +5,9 @@
 
 # 运行产物（容器里会重新生成）
 output/
+# 本机手工取景/自查留下的临时图（.gitignore 里有，但 .dockerignore 是另一份，
+# 不加就会把几 MB 的临时 PNG 和测试脚本打进镜像）
+out/
 
 # 可再下载的大件：镜像里由 Dockerfile 在构建期下载
 data/cache/

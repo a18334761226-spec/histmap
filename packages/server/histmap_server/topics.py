@@ -785,18 +785,15 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
 
 # ════════════════════════════════════════════════════════════
 def _load_font(size: int, prefer: str = ""):
-    """找一个能画中文的字体。跟 render.py 用同一套回退顺序。"""
-    from PIL import ImageFont
-    for cand in (prefer, r"C:\Windows\Fonts\msyh.ttc",
-                 r"C:\Windows\Fonts\simhei.ttf", r"C:\Windows\Fonts\simsun.ttc",
-                 "/System/Library/Fonts/PingFang.ttc",
-                 "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"):
-        if cand and os.path.exists(cand):
-            try:
-                return ImageFont.truetype(cand, size)
-            except Exception:
-                continue
-    return ImageFont.load_default()
+    """找一个能画中文的字体。
+
+    注释原来写着「跟 render.py 用同一套回退顺序」—— **它并不是同一套**：
+    这里多了一条 Linux 路径，render.py 没有。于是在 Windows 上两边都正常，
+    一进容器就只有这里能用、render.py 退回 PIL 位图字体，
+    图上的中文标注就整片消失了。现在两边都走 histmap_core.fonts 那一份表。
+    """
+    from histmap_core.fonts import find_font
+    return find_font(size, prefer)
 
 
 def _fit_font(draw, text: str, want: int, limit_px: int, prefer: str = ""):

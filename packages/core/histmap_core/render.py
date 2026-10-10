@@ -101,19 +101,12 @@ class Renderer:
         size = int(size)
         if size in self._font_cache:
             return self._font_cache[size]
-        path = self.style.label_font
-        f = None
-        for cand in (path, r"C:\Windows\Fonts\msyh.ttc",
-                     r"C:\Windows\Fonts\simhei.ttf",
-                     r"C:\Windows\Fonts\simsun.ttc"):
-            if cand and os.path.exists(cand):
-                try:
-                    f = ImageFont.truetype(cand, size)
-                    break
-                except Exception:
-                    continue
-        if f is None:
-            f = ImageFont.load_default()
+        # 走 histmap_core.fonts 的**唯一一份**候选表。
+        # 这里原来只列了 C:\Windows\Fonts\... 四条，于是 Windows 上一切正常、
+        # 一进 Linux 容器就全部落空 → load_default() → PIL 位图字体画不出中文
+        # → 整张图色块完美但**所有中文标注消失**，而且不报任何错。
+        from .fonts import find_font
+        f = find_font(size, self.style.label_font)
         self._font_cache[size] = f
         return f
 

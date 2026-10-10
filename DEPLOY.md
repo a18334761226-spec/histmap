@@ -6,7 +6,38 @@
 
 ---
 
-## 一、先知道两件事
+## 〇、先看这个：镜像里有一步「构建期自检」
+
+`Dockerfile` 在构建阶段就会把应用真正导入一遍、把两个 LangGraph 状态图
+编译一遍、确认中文字体在、确认题材数据齐。**自检不过就不出镜像。**
+
+为什么要这样：`COPY . .` 会把整个仓库打进去，少了 `packages/agent`、
+依赖装漏了、题材数据没带上，**镜像照样能构建成功**，但容器一启动就崩 ——
+那种失败留到部署当天才发现代价最大。
+
+更要紧的是有一类失败**连自检都抓不住**：地图上的中文标注整片消失。
+它曾经真的发生过：`render.py` 里只列了 `C:\Windows\Fonts\...`，
+Windows 上一切正常，一进 Linux 容器全部落空 → 退回 PIL 自带位图字体
+（画不出中文）→ 地图色块完美、**所有标题和地名都没有**，
+而 `/api/health` 返回 200、渲染接口 200、图片 1920×1080、颜色两万多种，
+**所有自动化检查都是绿的**。
+
+所以现在有两道保险：
+
+1. 字体候选表收敛到 `packages/core/histmap_core/fonts.py` **一份**，
+   两个模块不再各写一份（它们曾经就是那么分叉的），并且带
+   「这个字体到底画不画得出中文」的判定；
+2. `/api/health` 会报 `font: {ok, path, family}`，画不出中文时 `ok=false`。
+
+部署后请务必看一眼这两个字段，不要只看 `ok`：
+
+```bash
+curl -s https://<你的地址>/api/health | python -m json.tool
+```
+
+---
+
+## 一、先知道三件事
 
 ### 1. 二战/一战的国界数据不在仓库里
 
@@ -100,10 +131,15 @@ fly open
 ```json
 {
   "ok": true,
-  "topics": ["ww2-europe", "ww1-europe", "tang", "song"],
-  "stale": []
+  "topics": ["ww2-europe", "ww1-europe", "tang", "song", "..."],
+  "stale": [],
+  "font": {"ok": true, "path": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+           "family": "Noto Sans CJK JP"}
 }
 ```
+
+**`font.ok` 必须是 true。** 它是 false 的话接口全都正常、图也能出，
+但图上不会有任何中文 —— 这是最难靠自动化发现的一类故障（见开头第〇节）。
 
 再看 `https://<你的地址>/api/scenes`，每个题材都有 `"ready": true`。
 哪个是 `false`，看它的 `missing` 字段就知道缺什么。
@@ -117,6 +153,16 @@ curl -X POST https://<你的地址>/api/render \
 ```
 
 返回里 `image` 字段是个 `/media/api/...` 路径，拼到域名后面能打开就是通了。
+**打开那张图看一眼有没有中文地名** —— 只看到色块、没有字，就是字体问题。
+
+本地把镜像整体验一遍（推荐部署前先做）：
+
+```bash
+docker build -t histmap:local .
+docker run -d --name histmap-test -p 8899:8810 -e PORT=8810 histmap:local
+curl -s http://127.0.0.1:8899/api/health | python -m json.tool   # 看 font.ok
+# 出图并肉眼确认中文在
+```
 
 ---
 
@@ -126,9 +172,34 @@ curl -X POST https://<你的地址>/api/render \
 |---|---|---|
 | 部署后访问不通 | 绑了 127.0.0.1 | `app.py` 见到 `PORT` 自动绑 `0.0.0.0` |
 | 构建失败在 `COPY requirements.txt` | `.dockerignore` 的 `*.txt` 把它排除了 | 已加 `!requirements.txt` |
-| 地图上中文是方框 | 容器里没中文字体 | Dockerfile 装了 `fonts-noto-cjk` |
+| **图上有色块但没有中文** | 容器里找不到中文字体，退回 PIL 位图字体 | Dockerfile 装了 `fonts-noto-cjk`；查 `/api/health` 的 `font.ok` |
 | 二战点开报 500 | CShapes 没下载 | 构建期自动下载；失败会降级成「缺数据」提示 |
+| 「让模型起草」报 401/402 | Key 被拒，或**账户余额不足** | 界面上「设置 → 测试连接」会说清是哪一项；余额不足时列模型接口仍是 200，只有发对话才 402 |
 | 出片超时 | 免费档 CPU 太弱 | 压帧数或上付费档，见上文 |
+
+---
+
+## 七点五、镜像里有什么（体积与依赖）
+
+模型编排加进来之后，镜像里多了 LangGraph 那一套（`requirements.txt` 里标了
+「模型编排」的那三条）。构建日志里的实际版本：
+
+```
+langgraph 1.2.14 · langgraph-checkpoint · langgraph-prebuilt · langgraph-sdk
+langchain-core 1.6.9 · langchain-openai 1.7.0 · langsmith · openai 3.28.0
+httpx 0.28.1 · tiktoken · orjson · zstandard · tenacity …
+```
+
+它们**只服务三件事**：起草题材、读参考图写风格描述、生成纸纹。
+**出图和出片完全用不到**（几何是 Pillow + Shapely 画的，出片是 ffmpeg）。
+
+这一点值得说清楚，因为它是这个项目的核心取舍：
+地图的国界、控制区、中文标注**永远由确定性代码绘制**，模型只产数据。
+实测把地图交给图像模型去「编辑」，纸纹做得很好但中文标注会变成乱码笔画
+（结构相似度只有 0.84）。所以视频里的每一帧，几何都不是模型给的。
+
+想省镜像体积的话，可以不装这三条 —— 代价是「AI 起草新题材」和
+「读参考图抽提示词」两个功能不可用，其余全部照常。
 
 ---
 

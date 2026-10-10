@@ -177,9 +177,19 @@ def api_styles(with_preview: int = 1):
 # ════════════════════════════════════════════════════════════
 @app.get("/api/health")
 def health():
+    # 字体也要报出来。为什么：云端那次「所有中文标注消失」的事故里，
+    # 这个接口返回的是 ok=true、渲染也 200、图片尺寸颜色全正常 ——
+    # 所有自动化检查都是绿的，只有人眼看图才发现标题没了。
+    # 把字体状态放进健康检查，这种静默降级至少能被脚本查出来。
+    try:
+        from histmap_core.fonts import font_report
+        font = font_report()
+    except Exception as e:
+        font = {"ok": False, "path": f"{type(e).__name__}: {e}"}
     return {"ok": True, "topics": list(topics.load_topics()), "version": app.version,
             # 几何过期提示：改了控制表却没重跑构建时，这里点名是哪几年
-            "stale": topics.stale_report()}
+            "stale": topics.stale_report(),
+            "font": font}
 
 
 @app.get("/api/scenes")
