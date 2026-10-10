@@ -1,0 +1,8 @@
+{
+  "dependencies": ["langgraph>=0.2", "langchain-openai>=0.2", "httpx>=0.27"],
+  "graphs": {
+    "draft": "./lg_studio.py:draft",
+    "style": "./lg_studio.py:style"
+  },
+  "env": ".env"
+}

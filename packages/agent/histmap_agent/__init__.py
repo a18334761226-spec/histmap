@@ -15,9 +15,10 @@
 """
 
 from .llm import (LLMConfig, ModelAuthError, chat_json,      # noqa: F401
-                  chat_json_vision)
+                  chat_json_vision, server_default, PROVIDERS)
 from .geodata import (GB_LICENSE, fetch_adm, gb_license,     # noqa: F401
                       match_names, units_of)
 
 __all__ = ["LLMConfig", "ModelAuthError", "chat_json", "chat_json_vision",
+           "server_default", "PROVIDERS",
            "GB_LICENSE", "fetch_adm", "gb_license", "match_names", "units_of"]
