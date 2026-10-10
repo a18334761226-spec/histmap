@@ -759,13 +759,23 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
         "id": f"{topic.id}_xuan", "theme": "light",
         "canvas": {"background": "#efe7d6"},
         "borders": {"color": "#6b5f4a", "width": 1.0},
-        "labels": {"size": 19, "color": "#2b2620", "halo": "#f7f2e8",
-                   "halo_width": 4, "min_area_ratio": 0.0006},
+        # 字号 19→22、min_area_ratio 0.0006→0.00035：
+        # 视觉模型审图指出「凤翔/鄜坊/昭义这类小藩镇字号偏小，远处看不清」。
+        # 唐 807 有 37 个藩镇，很多面积很小，原来的过滤把它们挤掉了。
+        "labels": {"size": 22, "color": "#2b2620", "halo": "#f7f2e8",
+                   "halo_width": 4, "min_area_ratio": 0.00035},
         "title_style": {"size": 50, "color": "#241f1a",
                         "subtitle_size": 24, "subtitle_color": "#6b5f50"},
-        "legend": {"enabled": True, "position": "bottom-left",
-                   "size": 16}})
-    lay = Layout(width=W, height=H, mode=mode, title_ratio=0.11, footer_ratio=0.07)
+        # 图例留在**左下角**。我一度把它改成"通栏横放底部",结果更糟：
+        # 37 条排出来很高，底边固定在页脚上沿就会**往上长进地图**，
+        # 把京畿/河东/河南整片盖住。左侧那块空是**本来就空**的 ——
+        # 16:9 画布放中国（数据宽高比约 1.53）时地图按高度贴合，
+        # 左右必然留出空白带，图例正好填左下的空白，不该去动它。
+        "legend": {"enabled": True, "position": "bottom-left", "size": 15}})
+    # 边距收窄、标题/页脚带略压，把省下的空间给地图主体
+    # （实测原来内容外框只占画布宽 69%、墨迹仅 18.8%，左边一大片死白）
+    lay = Layout(width=W, height=H, mode=mode, title_ratio=0.10,
+                 footer_ratio=0.055, margin_ratio=0.028)
     prof = None
     if style_profile:
         prof, legend = _style_colors(style, fr, legend, topic, theme,

@@ -398,7 +398,10 @@ class Renderer:
         avail_h = (H * (1 - self.layout.title_ratio - self.layout.footer_ratio)
                    - self.layout.margin * self.ss * 2)
         per_col = max(1, int((avail_h - pad * 2 - head_h) // line_h))
-        max_cols = max(1, int((W * 0.40) // max(1, row_w)))
+        # 图例可占的宽度由样式给（见 Style.legend_width_ratio）。横放底部时可以
+        # 放宽到接近整幅，条目就不必堆成很高的几栏。
+        wr = float(getattr(st, "legend_width_ratio", 0.40) or 0.40)
+        max_cols = max(1, int((W * wr) // max(1, row_w)))
         capacity = per_col * max_cols
         # legend_max_items 现在只是**作者可选的硬上限**，而且一旦生效就必须
         # 画出「等 N 个」那一格。默认值(14)低于地理容量时不再生效 ——
@@ -418,12 +421,19 @@ class Renderer:
 
         pos = st.legend_position or "bottom-left"
         m = self.layout.margin * self.ss
-        if "left" in pos:
-            x0 = m
+        # `bottom` 是**通栏横放**：水平居中，允许占满 legend_width_ratio 给到的
+        # 宽度。为什么需要它：37 个藩镇按「左侧竖放」排出来是一面高墙，
+        # 压住地图左半边；横放在底部则是一两条矮带，不占地图的地方。
+        # （视觉模型审图时第一条 high 级问题就是这个构图失衡。）
+        if "left" in pos or "right" in pos:
+            x0 = m if "left" in pos else W - m - box_w
         else:
-            x0 = W - m - box_w
+            x0 = (W - box_w) / 2.0
         if "top" in pos:
             y0 = H * self.layout.title_ratio * 1.05
+        elif "bottom" in pos and "left" not in pos and "right" not in pos:
+            # 通栏：贴着页脚带上沿往上排，尽量不侵入地图
+            y0 = H * (1 - self.layout.footer_ratio) - box_h
         else:
             y0 = H * (1 - self.layout.footer_ratio) - box_h - m
 

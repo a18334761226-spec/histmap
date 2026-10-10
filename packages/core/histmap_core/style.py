@@ -69,6 +69,10 @@ class Style:
     legend_position: str = "bottom-left"
     legend_size: int = 18
     legend_max_items: int = 0
+    # 图例最多占画布宽度的多少。默认 0.40 是给「侧边竖图例」用的（竖排多了会
+    # 很高，太宽就压住地图）。但横放在底部时，40% 会把 30+ 个条目挤成很高的
+    # 一坨，反而盖住地图下沿。所以这个值要能按位置调。
+    legend_width_ratio: float = 0.40
 
     # ── 主题（明 / 暗） ─────────────────────────────────────
     # 早期版本的图例/大事记/页脚配色是硬编码的深色值，导致「换样式」只换了地图、
@@ -181,6 +185,8 @@ class Style:
             s.legend_position = lg.get("position", s.legend_position)
             s.legend_size = int(lg.get("size", s.legend_size))
             s.legend_max_items = int(lg.get("max_items", s.legend_max_items))
+            s.legend_width_ratio = float(
+                lg.get("width_ratio", s.legend_width_ratio))
 
         th = d.get("theme") or {}
         if isinstance(th, str):
