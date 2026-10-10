@@ -160,16 +160,28 @@ _REGIONS = [
 ]
 
 
-def where(cx: float, cy: float, max_n: int = 3) -> list:
-    """经纬度 → 落在哪些地理分区（按面积重叠程度排序）。"""
+def where(x0: float, y0: float, x1: float, y1: float, max_n: int = 3,
+          min_share: float = 0.08) -> list:
+    """区域的**外接框** → 它主要落在哪些地理分区里。
+
+    第一版用"中心点 ± 固定 6°×4°"，结果大区域全错：嶺南（华南）被算成
+    "岭南 + 中南半岛 + 荆湖"，浙西（浙江）被算成"荆湖 + 江西 + 江淮" ——
+    因为中心点加固定窗口对几千公里宽的区域毫无意义。
+    用户对提示词的第一条不满就是"地理位置你都没有"。
+
+    现在按**实际重叠面积占该区域的比例**排序，小于 8% 的丢掉 ——
+    只有真正占了相当篇幅的分区才会写进提示词。
+    """
+    area = max(1e-6, (x1 - x0) * (y1 - y0))
     hits = []
-    for name, x0, y0, x1, y1 in _REGIONS:
-        ox = max(0.0, min(cx + 6, x1) - max(cx - 6, x0))
-        oy = max(0.0, min(cy + 4, y1) - max(cy - 4, y0))
+    for name, ax0, ay0, ax1, ay1 in _REGIONS:
+        ox = min(x1, ax1) - max(x0, ax0)
+        oy = min(y1, ay1) - max(y0, ay0)
         if ox > 0 and oy > 0:
-            hits.append((ox * oy, name))
+            hits.append((ox * oy / area, name))
     hits.sort(reverse=True)
-    return [n for _, n in hits[:max_n]]
+    out = [n for share, n in hits if share >= min_share][:max_n]
+    return out
 
 
 def describe(topic, year: int, top: int = 10) -> dict:
@@ -213,6 +225,7 @@ def describe(topic, year: int, top: int = 10) -> dict:
             if not (focus[0] <= cx <= focus[2] and focus[1] <= cy <= focus[3]):
                 continue
             regions.append({"name": nm, "cx": cx, "cy": cy,
+                            "bbox": [min(xs), min(ys), max(xs), max(ys)],
                             "size": (max(xs) - min(xs)) * (max(ys) - min(ys)),
                             "conf": float(p.get("confidence_score") or 0)})
         box = focus
@@ -249,6 +262,7 @@ def describe(topic, year: int, top: int = 10) -> dict:
                 ally += [min(ys), max(ys)]
                 regions.append({"name": nm, "cx": (min(xs) + max(xs)) / 2,
                                 "cy": (min(ys) + max(ys)) / 2,
+                                "bbox": [min(xs), min(ys), max(xs), max(ys)],
                                 "size": (max(xs) - min(xs)) * (max(ys) - min(ys)),
                                 "conf": 1.0})
         box = raw.get("bbox") or [min(allx or [70]), min(ally or [15]),
@@ -284,7 +298,10 @@ def describe(topic, year: int, top: int = 10) -> dict:
     title_safe, title_hits = sanitize(title)
     era = era_of(int(year))
     for r in regions:
-        r["where"] = where(r["cx"], r["cy"])
+        bb = r.get("bbox")
+        r["where"] = (where(*bb) if bb
+                      else where(r["cx"] - 3, r["cy"] - 2,
+                                 r["cx"] + 3, r["cy"] + 2))
 
     lines = []
     for r in regions:
