@@ -56,14 +56,22 @@ def main():
 
     src = NT.fetch_adm(args.iso.upper(), args.adm.upper())
     add = json.load(open(src, encoding="utf-8"))
-    added, skipped = [], []
+    added, skipped, renamed = [], [], []
     for f in add["features"]:
         nm = str((f.get("properties") or {}).get(args.name_field) or "").strip()
         if not nm:
             continue
         if nm in have:
-            skipped.append(nm)
-            continue
+            # **撞名不要跳过，要拆开。**
+            # 原来这里直接 skip —— 后果是印度和巴基斯坦**各有一个省叫 Punjab**，
+            # 补 PAK 的时候巴基斯坦的旁遮普被当成"已存在"跳过了，
+            # 图上表现为克什米尔旁边一个白洞（看起来像渲染坏了，其实是数据没了）。
+            nm2 = f"{nm} ({args.iso.upper()})"
+            if nm2 in have:
+                skipped.append(nm2)
+                continue
+            renamed.append(f"{nm} -> {nm2}")
+            nm = nm2
         doc["features"].append({
             "type": "Feature",
             # 只留 id/name 两个字段 —— 跟这个表里原有的单元保持同一套结构，
@@ -75,6 +83,8 @@ def main():
 
     print(f"题材 {args.topic}  现有单元 {len(doc['features']) - len(added)} 个")
     print(f"从 {args.iso.upper()} {args.adm.upper()} 新增 {len(added)} 个：{added}")
+    if renamed:
+        print(f"撞名后改名保留 {len(renamed)} 个：{renamed}")
     if skipped:
         print(f"已存在、跳过 {len(skipped)} 个：{skipped}")
     if not added:

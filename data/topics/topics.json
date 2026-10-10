@@ -67,36 +67,6 @@
       "license_note": "geoBoundaries DEU 为 CC BY 4.0（须署名）；geoBoundaries AUT 为 CC BY 4.0（须署名）；geoBoundaries FRA 为 CC BY 4.0（须署名）；geoBoundaries DNK 为 CC BY 4.0（须署名）"
     },
     {
-      "id": "india-pakistan-partition",
-      "title": "印巴分治",
-      "subtitle": "1947年印度和巴基斯坦的分治",
-      "kind": "dynasty",
-      "bbox": [
-        59.78,
-        5.85,
-        98.51,
-        37.99
-      ],
-      "years": [
-        1947,
-        1949,
-        1950,
-        1960,
-        1970,
-        1972
-      ],
-      "units_file": "india-pakistan-partition_units.geojson",
-      "control": "india-pakistan-partition_control.json",
-      "themes": [
-        "light"
-      ],
-      "default_date": "1947-01-01",
-      "default_size": "16x9",
-      "merge_by": "owner",
-      "source_note": "本地图使用现代一级行政区界线，而非当时的实际界线；克什米尔按停火线近似，1947 年的东巴基斯坦即今孟加拉国。",
-      "license_note": "geoBoundaries IND 为 CC BY 4.0（须署名）；geoBoundaries PAK 为 CC BY 4.0（须署名）；geoBoundaries BGD 为 CC BY 4.0（须署名）"
-    },
-    {
       "id": "french-revolution",
       "title": "法国大革命",
       "subtitle": "1789年至1799年的法国及其周边国家",
@@ -334,40 +304,33 @@
       "merge_by": "owner"
     },
     {
-      "id": "huang-chao-rebellion",
-      "title": "黄巢起义控制区变迁",
-      "subtitle": "唐末黄巢起义期间各方控制区域的变化",
+      "id": "india-pakistan-partition",
+      "title": "印巴分治",
+      "subtitle": "从英属印度到印、巴、孟三国：1947年分治线的划定与后续版图归并",
       "kind": "dynasty",
       "bbox": [
-        71.61,
-        5.79,
-        136.82,
-        54.92
+        59.78,
+        5.85,
+        98.51,
+        37.99
       ],
       "years": [
-        874,
-        875,
-        876,
-        877,
-        878,
-        879,
-        880,
-        881,
-        882,
-        883,
-        884,
-        885
+        1946,
+        1949,
+        1961,
+        1972,
+        1975
       ],
-      "units": "huang-chao-rebellion_province_gazetteer.json",
-      "control": "huang-chao-rebellion_control.json",
+      "units_file": "india-pakistan-partition_units.geojson",
+      "control": "india-pakistan-partition_control.json",
       "themes": [
         "light"
       ],
-      "default_date": "875-01-01",
+      "default_date": "1949-01-01",
       "default_size": "16x9",
       "merge_by": "owner",
-      "source_note": "使用 gazetteer 中国历史朝代底图：以现代县界为几何底图，省级单元治所经纬度定位；不采用唐代当时州县界线。黄巢起义控制范围仅依据主要城市与区域归属的史料重建，非精确战线。",
-      "license_note": "同 gazetteer 底图数据源许可（如 CC BY 4.0）。"
+      "source_note": "几何取自 geoboundaries 的现代一级行政区（IND、PAK、BGD 的 ADM1），用的是现代行政界、不是当年的界线。当年的英属印度省份与土邦需要在现代单元上重新归并：旁遮普省被分治线切开，今天对应印度旁遮普邦/哈里亚纳邦/喜马偕尔邦与巴基斯坦旁遮普省；孟加拉省对应印度西孟加拉邦与孟加拉国；信德、俾路支、西北边省对应巴基斯坦同名省份；克什米尔土邦、朱纳格特、海得拉巴、果阿/达曼/第乌、锡金等在现代界上已各自并入印度或巴基斯坦的一级单元，须按所选年份分别判定归属。1946年=英属印度（含土邦）统一体；1949年=分治落定，克什米尔停火线形成，海得拉巴、朱纳格特已并入印度；1961年=果阿、达曼、第乌并入印度；1972年=东巴基斯坦成为孟加拉国；1975年=锡金并入印度。",
+      "license_note": "geoBoundaries IND 为 CC BY 4.0（须署名）；geoBoundaries PAK 为 CC BY 4.0（须署名）；geoBoundaries BGD 为 CC BY 4.0（须署名）"
     }
   ]
 }

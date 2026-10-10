@@ -167,10 +167,19 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
                 if not nm:
                     continue
                 if nm in name_origin and name_origin[nm] != iso:
+                    # **撞名不要丢掉，要拆开。**
+                    # 原来这里是 `continue` —— 直接丢弃后一个，只留一条警告。
+                    # 后果很严重而且很隐蔽：印度和巴基斯坦**各有一个省叫 Punjab**，
+                    # 于是巴基斯坦的旁遮普整块消失了。图上表现为克什米尔旁边
+                    # 一个大白洞 —— 看起来像渲染坏了，其实是数据在合并时被悄悄删掉。
+                    # 现在改成带国家后缀的独立单元，两个都保留。
+                    nm2 = f"{nm} ({iso})"
                     report["warnings"].append(
-                        f"单元名「{nm}」在 {name_origin[nm]} 和 {iso} 里都有，"
-                        f"只保留 {name_origin[nm]} 的那个；如需两者都要，请把名字写得更具体")
-                    continue
+                        f"单元名「{nm}」在 {name_origin[nm]} 和 {iso} 里都有"
+                        f"（例：印度与巴基斯坦各有一个 Punjab）—— 已拆成"
+                        f"「{nm}」（{name_origin[nm]}）和「{nm2}」，**两个都保留**。"
+                        f"控制表里要分别引用这两个名字。")
+                    nm = nm2
                 name_origin[nm] = iso
                 f2 = dict(f)
                 f2["properties"] = {"id": nm, "name": nm, "iso": iso}

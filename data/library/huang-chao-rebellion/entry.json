@@ -1,0 +1,36 @@
+{
+  "id": "huang-chao-rebellion",
+  "title": "黄巢起义控制区变迁",
+  "subtitle": "唐末黄巢起义期间各方控制区域的变化",
+  "kind": "dynasty",
+  "bbox": [
+    71.61,
+    5.79,
+    136.82,
+    54.92
+  ],
+  "years": [
+    874,
+    875,
+    876,
+    877,
+    878,
+    879,
+    880,
+    881,
+    882,
+    883,
+    884,
+    885
+  ],
+  "units": "huang-chao-rebellion_province_gazetteer.json",
+  "control": "huang-chao-rebellion_control.json",
+  "themes": [
+    "light"
+  ],
+  "default_date": "875-01-01",
+  "default_size": "16x9",
+  "merge_by": "owner",
+  "source_note": "使用 gazetteer 中国历史朝代底图：以现代县界为几何底图，省级单元治所经纬度定位；不采用唐代当时州县界线。黄巢起义控制范围仅依据主要城市与区域归属的史料重建，非精确战线。",
+  "license_note": "同 gazetteer 底图数据源许可（如 CC BY 4.0）。"
+}
