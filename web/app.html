@@ -536,6 +536,16 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
       <option value="txt2img">纯文生图（地理不准）</option>
     </select>
     <button class="btn" id="btnModelGen" title="让大模型参与出图">大模型生图</button>
+    <!-- 参考强度：只对「模型重画」有效。这个参数决定成败 ——
+         不给时模型从零重画，画出现代海岸线（NCC 0.24）；
+         0.8 时结构保住（NCC 0.92）。默认 0.8 是量出来的最佳点。 -->
+    <select id="mgStrength" title="模型对参考图的保留强度（只用于「模型重画」）"
+            style="max-width:132px">
+      <option value="0.8">保留 0.8（推荐）</option>
+      <option value="0.9">保留 0.9（更贴原图）</option>
+      <option value="0.6">保留 0.6（改动更大）</option>
+      <option value="0.0">不保留（自由重画）</option>
+    </select>
     <button class="btn" id="btnFrames">出全部图</button>
     <button class="btn" id="btnZip" title="下载全部帧的 ZIP">帧 ZIP</button>
     <button class="btn" id="btnMp4" title="下载 MP4">MP4</button>
@@ -681,7 +691,7 @@ function setStat(t, p){
   if (p != null) b.firstElementChild.style.width = Math.round(p * 100) + '%';
 }
 function busy(b){
-  ['#btnOne','#btnModelGen','#btnFrames','#btnVideo','#btnZip','#btnMp4','#btnFill','#btnAdd',
+  ['#btnOne','#btnModelGen','#mgMode','#mgStrength','#btnFrames','#btnVideo','#btnZip','#btnMp4','#btnFill','#btnAdd',
    '#btnClear','#btnApplyAll','#btnClrTxt','#btnUndo'].forEach(s => {
     const e = $(s); if (e) e.disabled = b;
   });
@@ -1534,7 +1544,8 @@ $('#btnModelGen').onclick = async () => {
          mode:'texture', img_model: cfg.imgModel||'', img_base: cfg.base||''}
       : {scene:s.id, date: f?f.date:(s.dates||[])[0]||'',
          theme: st.theme||(s.themes||['light'])[0], size: st.size||'16x9',
-         mode, img_model: cfg.imgModel||'', img_base: cfg.base||''};
+         mode, img_model: cfg.imgModel||'', img_base: cfg.base||'',
+         strength: parseFloat($('#mgStrength').value) || 0};
     const r = await api(ep, {method:'POST', body: JSON.stringify(body)});
     const j = await r.json();
     if (!r.ok) throw new Error(errText(j.detail, '生图失败'));

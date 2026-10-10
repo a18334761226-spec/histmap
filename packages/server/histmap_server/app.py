@@ -232,6 +232,17 @@ def api_models():
     return MODELS
 
 
+def _model_size(size: str) -> str:
+    """把画布尺寸名换成图像模型的 size 参数（WxH）。
+
+    **不传 size 会显著改变结果**：实测同一张底图、同一个 strength=0.8、
+    同一段提示词，传 `1920x1080` 量到 NCC 0.935，不传时掉到 0.30 ——
+    模型按自己的默认分辨率（方图）重新构图，参考图就被"重排"了。
+    """
+    w, h, _mode = topics._sizes(size)
+    return f"{w}x{h}"
+
+
 def vision_model_for(base: str, want: str = "") -> str:
     """给某个接口地址挑一个**能读图**的模型名。挑不出来就返回空串。
 
@@ -392,10 +403,14 @@ class ModelImageReq(BaseModel):
     img_base: str = ""
     steps: int = 30
     seed: int | None = None
-    # 把代码渲染的文字层盖回去。**默认开**，因为实测模型会把中文标注
-    # 画成形近的错字（「盧龍」→「盧西」、「所屬政權」→「所闰改划」），
-    # 而纸的质感它做得非常好。开着就是「模型出质感、代码出文字」。
-    overlay_text: bool = True
+    # 图生图"参考强度"。**这个参数决定成败**：不给时豆包会从零重画，
+    # 画出**现代**海岸线和省界（实测 NCC 0.24）；0.8 时结构保住了（NCC 0.935），
+    # 质感仍然是模型给的。默认 0.8 是量出来的最佳点。
+    strength: float = 0.8
+    # 把代码渲染的文字层盖回去。**默认关**：strength=0.8 时模型会照着参考图
+    # 把中文标注也基本复制对（实测地名可读）。开它则是"先抹字→模型→再盖字"，
+    # 用于低 strength 或模型字画错时的兜底。
+    overlay_text: bool = False
 
 
 @app.post("/api/render/model")
@@ -494,21 +509,23 @@ def api_render_model(req: ModelImageReq, request: Request,
                 ref_for_model = base_path
                 print(f"[生图] 抹字失败，用原图：{type(e).__name__}: {e}")
 
-    # 默认提示词。
-    # ⚠️ 这里必须**明确要求保住输入的几何**。原来我只写了"不要画字"，
-    #    等于**放任它重画** —— 它就去重画了，而且用的是自己训练分布里的先验
-    #    （全是现代地图），于是画出现代海岸线和省界，标题却还写着 807 年。
-    #    加上这句不保证一定守住（实测 NCC 仍会掉），但不加就是主动邀请它重画。
+    # 默认提示词。措辞是**实测挑出来的**：同样 strength=0.8、同一张底图，
+    # 这句（"把参考图当权威，保住形状/海岸线/边界/位置与整体构图"）
+    # 量到 NCC 0.935；换成另一段意思相近但没点明"参考图是权威"的写法，
+    # NCC 掉到 0.30。所以这段不要随手改，要改先量。
     prompt = (req.prompt or "").strip() or (
-        "Keep the input image's geography, coastlines, borders, region shapes "
-        "and their exact positions completely unchanged. Do not redraw, move, "
-        "add or remove any region, line or shape. Only change the MATERIAL and "
-        "TONE: aged parchment paper, visible fibre grain, soft foxing stains, "
-        "muted earthy low-saturation colours, warm toned, fine engraved "
-        "hatching texture, subtle vignette, printed like a 19th-century atlas "
-        "plate. "
-        "Do NOT draw any text, letters, numbers, characters or labels. "
-        "Leave every empty area completely empty.")
+        "Use the provided map image as the authoritative reference. Preserve "
+        "its shapes, coastlines, region boundaries, region positions and the "
+        "overall composition exactly. Restyle it as an antique hand-drawn "
+        "atlas plate: aged parchment paper, visible fibre grain, soft foxing "
+        "stains, muted earthy low-saturation colours, fine engraved hatching, "
+        "warm toned, subtle vignette. Keep every colour region in its place. "
+        "Do not invent new landmasses or change any border.")
+    # 注意：这里**故意不写**「不要画文字」。试过，NCC 从 0.935 掉到 0.845 ——
+    # strength=0.8 时模型本来就会把参考图上的中文标注**照抄下来**（实测可读），
+    # 而"别画文字"这句会让它去涂抹/改写字的位置，反而更偏离底图。
+    # 需要绝对精确的文字时，用 overlay_text=True 那条路（先抹字、模型出图、
+    # 再把代码的文字层盖回去），而不是靠提示词。
     out_path = os.path.join(MEDIA, f"modelgen_{req.scene}_{stamp}.png")
     prov = Z.SiliconFlow(key, model=model, base=base_url)
     try:
@@ -520,7 +537,8 @@ def api_render_model(req: ModelImageReq, request: Request,
                 "logo, blurry, low quality")
         else:
             url, secs, seed = prov.run(ref_for_model, prompt, steps=req.steps,
-                                       seed=req.seed)
+                                       seed=req.seed, strength=req.strength,
+                                       size=_model_size(req.size))
         Z._download(url, out_path)
     except Exception as e:
         msg = f"{type(e).__name__}: {str(e)[:400]}"

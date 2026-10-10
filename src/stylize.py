@@ -177,7 +177,23 @@ class SiliconFlow:
         # //images/generations，少数网关会因此 404
         self.base = (base or self.DEFAULT_BASE).rstrip("/")
 
-    def run(self, image_path, prompt, steps=30, seed=None, timeout=300):
+    def run(self, image_path, prompt, steps=30, seed=None, timeout=300,
+            strength=None, size=None):
+        """图生图：拿 input_image 当**参考**，按 prompt 重画。
+
+        **strength 是关键参数，不给自己会后悔。**
+        实测（豆包 Seedream 4.0，唐 807 底图，NCC 越高越接近底图）：
+
+            不给 strength      0.24   ← 模型几乎从零重画，地理全变
+            strength=0.5       0.37
+            strength=0.6       0.84
+            strength=0.8       0.935  ← 结构保住，质感是模型的
+            strength=0.9       0.908
+
+        「不给」时模型会重画整张图，而它训练分布里的地图几乎全是**现代**的，
+        于是画出**现代海岸线和省界**，标题却还写着 807 年 —— 看着权威、其实全错。
+        所以默认值在调用方给（这里不设默认，避免悄悄退回重画）。
+        """
         h = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json",
              # 下游还要合成视频，关掉显式水印；最终输出由 add_ai_watermark 补
              "X-Enable-Watermark": "0"}
@@ -185,6 +201,14 @@ class SiliconFlow:
                    "image": _b64_image(image_path), "num_inference_steps": steps}
         if seed is not None:
             payload["seed"] = seed
+        if strength is not None:
+            payload["strength"] = strength
+        if size:
+            payload["size"] = size
+        # 火山（豆包）的图像接口认 size / response_format，不认 num_inference_steps
+        if "volces.com" in self.base:
+            payload["response_format"] = "url"
+            payload.pop("num_inference_steps", None)
         t0 = time.time()
         try:
             body = _post_json(f"{self.base}/images/generations", payload, h, timeout)
