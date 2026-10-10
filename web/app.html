@@ -583,11 +583,18 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
         style="width:100%;font-family:var(--mono);font-size:12px;line-height:1.5"></textarea>
       <div class="tiny dim" id="genNote" style="margin-top:6px"></div>
       <div class="row" style="margin-top:10px">
-        <select id="genMode" style="max-width:220px">
-          <option value="img2img">给数据图重画（推荐·地理准）</option>
-          <option value="txt2img">纯文生图（地理不准）</option>
+        <select id="genMode" style="max-width:300px">
+          <option value="texture">代码画地图 + 模型只加纸纹（默认·内容零改动）</option>
+          <option value="restyle">代码图打底 + 模型加质感（会动标注）</option>
+          <option value="txt2img">纯文生图（模型自己画·地理一定不准）</option>
         </select>
         <button class="btn pri grow" id="genGo">② 确认无误，出图</button>
+      </div>
+      <div class="tiny dim" style="margin-top:6px">
+        <b>默认那条</b>：几何、中文标注、图例全由代码画准，模型只生成一张纸纹，
+        代码再把地图贴上去 —— 实测内容改动 <b>0 像素</b>。<br>
+        另两条是试验：只要模型碰到画面，标注就会重复、地理就会走样
+        （GPT-Image 结构保留 0.16–0.51，豆包 strength=0.8 是 0.91）。
       </div>
     </div>
 
@@ -1918,23 +1925,41 @@ $('#genGo').onclick = async () => {
   const date = st.date || (s && (s.dates||[])[0]) || '';
   const mode = $('#genMode').value;
   $('#genGo').disabled = true;
-  setStat('豆包出图中…（30–60 秒）');
+  setStat(mode === 'texture' ? '代码画地图 + 模型生成纸纹…' : '豆包出图中…（30–60 秒）');
   try {
-    const r = await api('/api/gen', {method:'POST', body: JSON.stringify({
-      scene: sid, date, mode, prompt: $('#genPrompt').value.trim()})});
+    // **默认那条走 /api/style/texture** —— 代码画准地图，模型只产纸纹，
+    // 代码再把地图贴上去（实测内容改动 0 像素）。
+    // 另两条走 /api/gen，是试验性质：只要模型碰到画面，标注就会重复、
+    // 地理就会走样，所以不设为默认。
+    let url, body;
+    if (mode === 'texture'){
+      url = '/api/style/texture';
+      body = {scene: sid, date, theme: st.theme, size: st.size || '16x9',
+              mode: 'texture', image_prompt: $('#genPrompt').value.trim()};
+    } else {
+      url = '/api/gen';
+      body = {scene: sid, date, size: st.size || '16x9', mode,
+              prompt: $('#genPrompt').value.trim()};
+    }
+    const r = await api(url, {method:'POST', body: JSON.stringify(body)});
     const j = await r.json();
     if (!r.ok) throw new Error(errText(j.detail, '出图失败'));
+    const img = j.image || j.textured || '';
+    if (!img) throw new Error('接口没返回图片：' + JSON.stringify(j).slice(0, 180));
     $('#genMask').classList.remove('on');
+    const fid = j.fidelity || {};
+    const note = mode === 'texture'
+      ? `代码绘制 + 模型纸纹 · 内容改动 ${fid.content_changed_ratio != null
+          ? (fid.content_changed_ratio * 100).toFixed(2) + '%' : '—'}`
+      : `豆包 ${esc(j.model||'')} · ${esc(j.mode||mode)} · ${j.seconds||''}s`;
     $('#view').innerHTML = `<div class="wrap">
       <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
-        <img src="${esc(j.image)}?t=${Date.now()}"></div>
-      <div class="cap">豆包 ${esc(j.model)} · ${esc(j.mode)} · ${j.seconds}s ·
-        ${(j.entities||[]).length} 个实体</div></div>`;
-    setStat('大模型出图完成');
+        <img src="${esc(img)}?t=${Date.now()}"></div>
+      <div class="cap">${note}</div></div>`;
+    setStat('出图完成');
   } catch(e){
     $('#genNote').innerHTML = `<b>出图失败：</b>${esc(e.message)}<br>` +
-      `<span class="dim">如果提示词里有"割据/军阀/分裂/内战"这类词，豆包会拦；
-       改掉再试。也可以换 seedream-4.0 以外的模型。</span>`;
+      `<span class="dim">提示词里有"割据/军阀/分裂/内战"这类词会被豆包拦，改掉再试。</span>`;
     toast(e.message);
   } finally { $('#genGo').disabled = false; }
 };

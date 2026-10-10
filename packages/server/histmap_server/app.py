@@ -2023,12 +2023,17 @@ class GenReq(BaseModel):
     scene: str
     date: str = ""
     size: str = "16x9"
-    # **默认 img2img。** 实测对比（同一份数据）：
-    #   txt2img（只给文字）—— 模型按自己的先验瞎画，地理完全对不上，
-    #     提示词里写"唐在中部占48%"这种话对扩散模型没有任何约束力；
-    #   img2img（给数据图 + 提示词）—— 结构 NCC 0.92，各区域位置正确，
-    #     质感由模型给。**文字管不了地理，地理必须给图。**
-    mode: str = "img2img"      # img2img（推荐）| txt2img（纯文生图，地理不准）
+    # **默认 restyle：代码参考图 + 图像模型 strength=0.8。**
+    # 这是实测下来唯一既保住地理、又拿到质感的做法：
+    #   代码渲染        地理✓ 质感朴素      NCC 1.00（基准）
+    #   豆包 strength=0.8 地理✓ 质感✓       NCC 0.911  ← 用这个
+    #   GPT-Image /edits  地理✗ 质感✓       NCC 0.336–0.449
+    #   GPT-Image +image  地理✗ 质感✓       NCC 0.157
+    # 原因是 **GPT-Image 的图生图没有 strength 参数**，拿到参考图只能自由
+    # 重画，地理必然丢。豆包有 strength，0.8 = 只改质感不动结构。
+    # txt2img 只在用户明确要"让模型自己画"时才用（地理一定不准）。
+    mode: str = "restyle"      # restyle（推荐）| img2img | txt2img
+    strength: float = 0.8
     img_model: str = ""
     img_base: str = ""
     strength: float = 0.8
@@ -2113,19 +2118,22 @@ def api_gen(req: GenReq, request: Request,
     out = os.path.join(MEDIA, f"gen_{req.scene}_{stamp}.png")
     prov = Z.SiliconFlow(key, model=model, base=base)
     try:
-        if req.mode == "img2img":
-            # 给模型一张**没有文字的纯数据图**当参考。
-            # 关键：**不能带标题**。原来的输入图上有标题「黄巢起义控制区变迁」，
-            # 而「起义」这类词在图片里**照样触发内容审核**（用户提醒的
-            # 「割据是敏感词」同一类问题）。给模型的本来也不该是成品图，
-            # 而是"哪里是什么"的纯净版：色块 + 细边界，其余全空。
+        if req.mode in ("restyle", "img2img"):
+            # **代码图当结构，模型只加质感 —— 实测唯一既保住地理又能提质感的做法。**
+            # 数字（NCC 结构保留，1.0 = 完全没动）：
+            #   代码渲染          1.000（基准，但质感朴素）
+            #   豆包 strength=0.8 0.911 ← 用这个
+            #   GPT-Image /edits  0.336–0.449（地理丢了）
+            #   GPT-Image +image  0.157（几乎另一张图）
+            # 根因：**GPT-Image 的图生图没有 strength 参数**，拿到参考图只能
+            # 自由重画；豆包有 strength，0.8 = 只改质感不动结构。
+            # 参考图**不带标题**：图上写「黄巢起义…」这种字照样触发内容审核。
             import topics as _T
-            base_img = _T.render(req.scene, date, "light",
-                                 req.size or "16x9",
-                                 title="", subtitle="", footer="")
-            bp = os.path.join(MEDIA, f"genbase_{req.scene}_{stamp}.png")
-            base_img.save(bp)
-            url, secs, seed = prov.run(bp, prompt, steps=req.steps,
+            ref = _T.render(req.scene, date, "light", req.size or "16x9",
+                            title="", subtitle="", footer="")
+            rp = os.path.join(MEDIA, f"genref_{req.scene}_{stamp}.png")
+            ref.save(rp)
+            url, secs, seed = prov.run(rp, prompt, steps=req.steps,
                                        seed=req.seed, strength=req.strength,
                                        size=_model_size(req.size or "16x9"))
         else:

@@ -319,13 +319,30 @@ def describe(topic, year: int, top: int = 10) -> dict:
         f"{r['name']} controls " +
         (", ".join(r["where"]) if r["where"] else f"the {r['dir']} part")
         for r in regions)
+    # **每个势力的真实坐标。**
+    # 用户的要求：「提示词不够详细，没有定位坐标信息」。
+    # 只写"唐控制四川"太虚 —— 模型需要一个能落地的锚点。
+    # 给两样：中心点（定位）+ 经纬度范围（大小与形状方向）。
+    coord_lines = []
+    for r in regions:
+        bb = r.get("bbox")
+        if bb and len(bb) == 4:
+            x0, y0, x1, y1 = bb
+            coord_lines.append(
+                f"{r['name']} centred near {r['cx']:.1f}E {r['cy']:.1f}N, "
+                f"spanning {x0:.0f}-{x1:.0f}E / {y0:.0f}-{y1:.0f}N")
+        else:
+            coord_lines.append(
+                f"{r['name']} centred near {r['cx']:.1f}E {r['cy']:.1f}N")
     prompt = (
         f"An antique Chinese historical atlas plate of {era['blurb']}, "
         f"showing the political situation in the year {year} AD. "
         f"This is {era['cn']}，{title_safe}。 "
         f"Geography — each power and the areas it controls: " + loc_en + ". "
-        f"Keep the shape of every controlled area as given and place it in the "
-        f"correct part of China. "
+        f"Coordinates — " + "; ".join(coord_lines) + ". "
+        f"Redraw the provided reference map: keep every region's shape and "
+        f"position exactly as in it, and place each region at the coordinates "
+        f"listed above. "
         f"Style: aged ivory xuan paper with subtle foxing, fine engraved "
         f"hatching and hand-drawn mountain relief, muted earthy "
         f"low-saturation colours, thin dark ink outlines, a small engraved "

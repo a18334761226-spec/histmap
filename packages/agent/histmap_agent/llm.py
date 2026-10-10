@@ -95,6 +95,16 @@ PROVIDERS: dict = {
         "env": ("ZHIPU_API_KEY", "GLM_API_KEY"),
         "model": "glm-4-plus",
     },
+    "Grok": {
+        # xAI 的 Grok。官方地址 https://api.x.ai/v1，但用户的 key 走的是
+        # 中转站（aivalux.com）—— 所以地址必须**可被环境变量覆盖**，
+        # 不能写死官方域名。base_env 列出的变量优先于这里的默认值。
+        # 实测 grok-4.5 / 4.6 / 4.7 可用（4.5 最快，约 4 秒）。
+        "base": "https://api.x.ai/v1",
+        "base_env": ("GROK_MODELS_BASE_URL", "XAI_BASE_URL", "GROK_BASE_URL"),
+        "env": ("XAI_API_KEY", "GROK_API_KEY"),
+        "model": "grok-4.5",
+    },
     "魔搭": {
         "base": "https://api-inference.modelscope.cn/v1",
         "env": ("MODELSCOPE_TOKEN", "MODELSCOPE_API_KEY"),
@@ -153,9 +163,16 @@ def server_default(provider: str = "", model: str = "") -> LLMConfig:
             raise SystemExit(
                 f".env 里指定的 HISTMAP_PROVIDER=「{want}」不认识。"
                 f"可选：{'、'.join(PROVIDERS)}")
+        # base 可以被环境变量覆盖（中转站场景：同一个模型在官方域名
+        # 和第三方中转上是两个地址）。base_env 里列出的变量优先。
+        b = p["base"]
+        for be in p.get("base_env") or ():
+            if env.get(be):
+                b = env[be]
+                break
         for e in p["env"]:
             if env.get(e):
-                return LLMConfig(key=env[e], base=p["base"],
+                return LLMConfig(key=env[e], base=b,
                                  model=model or gen_model or p["model"],
                                  provider=want, label=f".env 的 {e}")
         raise SystemExit(
@@ -185,6 +202,36 @@ def server_default(provider: str = "", model: str = "") -> LLMConfig:
     name, e, k, p = have[0]
     return LLMConfig(key=k, base=p["base"], model=model or gen_model or p["model"],
                      provider=name, label=f".env 的 {e}")
+
+
+def image_default() -> LLMConfig:
+    """**图像模型**的 key/base/model —— 允许和对话模型不是同一家。
+
+    为什么必须能拆开：现实里经常是「对话用 A、生图用 B」。
+    这次就是：Grok 的对话好用（grok-4.5，约 4 秒），但中转站的**生图上游挂了
+    （502）**，而豆包 seedream-4.0 生图是好的 —— 于是必须能分开配。
+    原来只有一个 provider，拆不开就只能二选一，等于把好的那半也扔掉。
+
+    .env 里配（都可选，缺了就退回对话那家）：
+        HISTMAP_IMAGE_KEY=...
+        HISTMAP_IMAGE_BASE=https://ark.cn-beijing.volces.com/api/v3
+        HISTMAP_IMAGE_MODEL=doubao-seedream-4-0-20260415
+    """
+    env = dict(os.environ)
+    env.update(_env_file())
+    ikey = env.get("HISTMAP_IMAGE_KEY") or ""
+    ibase = env.get("HISTMAP_IMAGE_BASE") or ""
+    imodel = env.get("HISTMAP_IMAGE_MODEL") or ""
+    if ikey and ibase:
+        # 图像单独配了一家，但 key 没写时退回对话那家的 key（同一家的情况）
+        return LLMConfig(key=ikey, base=ibase.rstrip("/"), model=imodel,
+                         provider="图像专用", label=".env 的 HISTMAP_IMAGE_KEY")
+    chat = server_default()
+    return LLMConfig(key=env.get("HISTMAP_IMAGE_KEY") or chat.key,
+                     base=(ibase or chat.base).rstrip("/"),
+                     model=imodel or chat.model,
+                     provider=chat.provider,
+                     label=chat.label + "（图像复用对话那家）")
 
 
 
