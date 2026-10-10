@@ -39,10 +39,51 @@ def _hex_to_rgb(c: str):
         return (136, 136, 136)
 
 
+def memory_limit_mb() -> float:
+    """当前容器/主机的内存上限（MB）。读不到返回 0.0。
+
+    为什么要读它：Render 免费档只有 **512 MB**，而本引擎渲染 1920×1080 时会先
+    画 3840×2160（2 倍超采样），再叠 numpy 的材质层。实测出片时峰值 **848 MB**
+    —— 超过免费档会被**静默杀掉**（日志里只有一句 Killed，看不出是内存问题）。
+    所以倍数要按可用内存自动降，而不是写死。
+    """
+    # cgroup v2 是 memory.max，v1 是 memory/memory.limit_in_bytes
+    for p in ("/sys/fs/cgroup/memory.max",
+              "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            with open(p) as f:
+                v = f.read().strip()
+            if not v or v == "max":
+                continue
+            n = int(v)
+            # v1 的"无限制"是个接近 2^63 的巨大数，当没限制处理
+            if n < (1 << 62):
+                return n / 1024.0 / 1024.0
+        except Exception:
+            continue
+    return 0.0
+
+
+def auto_supersample(want: int = 2) -> int:
+    """按可用内存挑超采样倍数。
+
+    优先级：
+      1. 环境变量 HISTMAP_SUPERSAMPLE（显式指定，方便排查与压测）
+      2. 内存上限 ≤ 900 MB → 1 倍（Render 免费档走这条）
+      3. 否则用调用方要的倍数（默认 2）
+    """
+    env = (os.environ.get("HISTMAP_SUPERSAMPLE") or "").strip()
+    if env.isdigit():
+        return max(1, min(4, int(env)))
+    lim = memory_limit_mb()
+    if lim and lim <= 900:
+        return 1
+    return max(1, min(4, int(want)))
+
+
 @dataclass
 class Layout:
     """画布与各区块的排布（比例制，随分辨率自适应）。"""
-
     width: int = 1080
     height: int = 1920
     margin_ratio: float = 0.045

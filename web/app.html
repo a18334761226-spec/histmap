@@ -1610,11 +1610,20 @@ $('#nwGo').onclick = async () => {
   // 于是没填 key 的人根本走不到那一步，只能在设置里瞎填一个 —— 然后 401。
   // 有没有 key、能不能用，交给服务端判断，报错也会说得更准。
   $('#nwGo').disabled = true;
-  // 实测：两阶段起草 + 拉真实行政区名，DeepSeek V4 Flash 约 130 秒、
-  // Qwen2.5-72B 约 90 秒。早先这里写「约 10–40 秒」，用户等到 40 秒
-  // 就会以为卡死了 —— 宁可先说大一点。
-  $('#nwStat').textContent = '模型在挑数据源、分配归属…（要拉真实行政区名，'
-    + '通常 1–2 分钟，别关页面）';
+  // **必须显示「已经等了多少秒」。**
+  // 实测起草要 70–100 秒（豆包 lite 更慢），而界面上原来只有一句静止的提示，
+  // 看 90 秒谁都会以为卡死了 —— 于是用户反复点击、以为按钮坏了。
+  // 有了逐秒计时，既能证明它在动，也能让人知道还要等多久。
+  const _t0 = Date.now();
+  const _tick = setInterval(() => {
+    const s = Math.round((Date.now() - _t0) / 1000);
+    $('#nwStat').textContent = s < 20
+      ? `已等 ${s} 秒 · 模型在挑数据源…`
+      : s < 60
+        ? `已等 ${s} 秒 · 正在拉真实行政区名…（别关页面）`
+        : `已等 ${s} 秒 · 模型在分配归属…（通常 1–2 分钟，别关页面）`;
+  }, 1000);
+  $('#nwStat').textContent = '已等 0 秒 · 正在发请求…';
   try {
     const r = await api('/api/topic/draft', {method:'POST', body: JSON.stringify({ask})});
     const j = await r.json();
@@ -1630,7 +1639,7 @@ $('#nwGo').onclick = async () => {
     $('#nwStat').textContent = '起草没成功。去「设置 → 测试连接」能定位是 Key、'
       + '接口地址还是模型的问题。';
     toast(e.message);
-  } finally { $('#nwGo').disabled = false; }
+  } finally { clearInterval(_tick); $('#nwGo').disabled = false; }
 };
 
 $('#nwRedo').onclick = () => $('#nwGo').click();
@@ -1640,7 +1649,13 @@ $('#nwBuild').onclick = async () => {
   try { spec = JSON.parse($('#nwSpec').value); }
   catch(e){ toast('草案不是合法 JSON：' + e.message); return; }
   $('#nwBuild').disabled = true;
-  $('#nwStat').textContent = '在下数据、逐年算几何…（约 30 秒到几分钟）';
+  // 建库也要计时：要下行政区数据、逐年算几何，30 秒到几分钟都正常
+  const _bt0 = Date.now();
+  const _btick = setInterval(() => {
+    const s = Math.round((Date.now() - _bt0) / 1000);
+    $('#nwStat').textContent = `已等 ${s} 秒 · 在下数据、逐年算几何…`;
+  }, 1000);
+  $('#nwStat').textContent = '已等 0 秒 · 在下数据、逐年算几何…';
   try {
     const r = await api('/api/topic/create', {method:'POST', body: JSON.stringify({spec})});
     const j = await r.json();
@@ -1662,7 +1677,7 @@ $('#nwBuild').onclick = async () => {
   } catch(e){
     $('#nwStat').textContent = '';
     toast(e.message);
-  } finally { $('#nwBuild').disabled = false; }
+  } finally { clearInterval(_btick); $('#nwBuild').disabled = false; }
 };
 $('#btnJobs').onclick = openJobs;
 $('#scrim').onclick = closeJobs;

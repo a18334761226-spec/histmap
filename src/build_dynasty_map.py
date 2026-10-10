@@ -111,15 +111,21 @@ def load_units(path: str):
     return out
 
 
-def parse_owner_table(raw: dict, year: int):
+def parse_owner_table(raw: dict, year: int, control_year: int | None = None):
     """把控制表的一行统一成 {单元: 归属方}。
+
+    control_year：用**哪一行**控制数据。默认就是 year 本身。
+    传入别的年份是为了支持「任意年份」—— 历史地图集的惯例是一个控制格局
+    **持续到它改变为止**，所以 1506 年该用「不晚于 1506 的最近一行」。
+    不这样做的话，用户只能看预建的那几年，任何别的年份都是「缺少几何」。
 
     三种格式都吃（史料整理出来的结构本来就不统一）：
       {"魏博": ["魏","博"]}                    按归属方分组（扁平列表）
       {"魏博": {"zhou": ["魏","博"], ...}}     按归属方分组（带元信息的嵌套）
       {"魏": "魏博", "博": "魏博"}              按单元列表
     """
-    row = raw.get(str(year)) or raw.get(year)
+    y = year if control_year is None else control_year
+    row = raw.get(str(y)) or raw.get(y)
     if not row:
         return None
     out = {}
@@ -325,7 +331,8 @@ def validate_palette(pal: dict, owners: list) -> tuple[dict, list[str]]:
 
 
 def build(topic_id: str, year: int, max_km: float | None = None,
-          simplify: float = 0.02, force: bool = False, quiet: bool = False):
+          simplify: float = 0.02, force: bool = False, quiet: bool = False,
+          control_year: int | None = None):
     from histmap_server import topics as T
 
     t = T.get(topic_id)
@@ -369,9 +376,15 @@ def build(topic_id: str, year: int, max_km: float | None = None,
         raise SystemExit(f"题材 {topic_id} 没声明 control 文件")
 
     raw = json.load(open(ctrl, encoding="utf-8"))
-    owner = parse_owner_table(raw, year)
+    # control_year：用哪一行控制数据算。默认等于 year（预设年份）。
+    # 「任意年份」时由调用方给出「不晚于 year 的最近一行」，这样
+    # 用户要 1506 也能出图，而不是只有预建的几年。
+    if control_year is None:
+        control_year = year
+    owner = parse_owner_table(raw, year, control_year=control_year)
     if not owner:
-        raise SystemExit(f"控制表里没有 {year} 年")
+        raise SystemExit(
+            f"控制表里没有 {control_year} 年（请求的是 {year} 年）")
 
     if uf:
         # 现成多边形：跳过坐标表与县归并，直接把面按归属方分组

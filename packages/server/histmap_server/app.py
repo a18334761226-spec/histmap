@@ -1821,19 +1821,40 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
     # 而前端是放在 X-Model / X-Base-Url 头里发的 —— 于是「设置」里
     # 选的模型和 base URL 在起草这条路上**完全没生效**，用户看到一个
     # 自己没选过的模型在跑，或者别家的 key 被发到硅基流动去撞 401。
-    model = req.model or x_model or "Qwen/Qwen2.5-72B-Instruct"
+    model = req.model or x_model or ""
     base = (x_base_url or "").strip()
     client_key = (x_api_key or "").strip()
+
+    # **服务端默认用哪家，走 server_default()，不写死硅基流动。**
+    # 原来这里是：
+    #     model = ... or "Qwen/Qwen2.5-72B-Instruct"
+    #     server_key = os.environ.get("SILICONFLOW_API_KEY") or ...
+    # 于是 .env 里配的是火山方舟（豆包）、用户也想用豆包时，起草会拿
+    # **硅基的 key + 硅基的模型名**去跑 —— 报了 200 也是走了另一家，
+    # 而且响应里回报的模型名跟实际配置对不上，用户只会觉得"怎么老去找硅基"。
+    srv_key, srv_base, srv_model, srv_label = "", "", "", ""
+    if allow_env:
+        try:
+            from histmap_agent.llm import server_default
+            _d = server_default()
+            srv_key, srv_base = _d.key, _d.base
+            srv_model, srv_label = _d.model, _d.label
+        except SystemExit:
+            srv_key = ""
+        except Exception:
+            srv_key = (os.environ.get("SILICONFLOW_API_KEY")
+                       or NT._key_from_env_file() or "")
+    if not model:
+        model = srv_model
+    if not base:
+        base = srv_base
+    server_key = srv_key
 
     # 「访问者没带 Key，服务端也不能用站长的」在公网是**常态**，不是异常。
     # 早先这种情况会一路走到 new_topic.draft 里抛出
     # 「设 SILICONFLOW_API_KEY，或用 --key 传」—— 那是给开发者看的命令行说明，
     # 网页访客既看不懂也做不到，而且状态码是 400（应该是 401 需要鉴权）。
     # 这里提前拦住，给一句网页用户能照做的话。
-    server_key = ""
-    if allow_env:
-        server_key = (os.environ.get("SILICONFLOW_API_KEY")
-                      or NT._key_from_env_file() or "")
     if not client_key and not server_key:
         raise HTTPException(401, (
             "起草新题材需要一个模型 Key。点右上角「设置」填一个就行 —— "
@@ -1846,20 +1867,28 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
 
     used = "你填的 Key" if client_key else "本机 .env 里的 Key"
     note = ""
+    # **必须把 server_key 显式传进去。**
+    # 踩过的坑：这里原来写 `_run(client_key, base)`，没带 key 时 client_key 是空串，
+    # 而 new_topic.draft 见到空 key 会**自己去读 .env 的 SILICONFLOW_API_KEY**
+    # —— 于是服务端配的是火山方舟，发出去的却是硅基的 key，火山回
+    # `401 AuthenticationError: The API key format is incorrect`。
+    # 看着像 key 错了，其实是**拿错了那一家**。既然上面已经解析出 server_key
+    # 和它对应的 base，就必须成对地传下去。
+    eff_key = client_key or server_key
     try:
-        spec = _run(client_key, base)
+        spec = _run(eff_key, base)
     except NT.ModelAuthError as e:
         # 本机 + .env 里有能用的 key 时，别让一个填错的 key 把功能堵死 ——
         # 这是「自己电脑上打开就能用」的承诺。但必须**说清换了哪个 key**，
         # 否则用户会以为生效的是自己填的那个，之后换机器就莫名其妙失败。
         env_key = ""
         if allow_env and os.environ.get("HISTMAP_ALLOW_SERVER_KEY") != "0":
-            env_key = (os.environ.get("SILICONFLOW_API_KEY")
-                       or NT._key_from_env_file() or "")
+            # 同样不写死硅基：回退用的 key 要是**当前配置那一家**的。
+            env_key = srv_key or (os.environ.get("SILICONFLOW_API_KEY")
+                                  or NT._key_from_env_file() or "")
         if client_key and env_key and env_key != client_key:
-            # 回退必须**连 base URL 一起回退**：.env 里那个 key 是硅基流动的，
-            # 把它配到界面里残留的别家 base URL 上照样 401。
-            # 这里传空 base，走服务端自己的默认值。
+            # 回退必须**连 base URL 一起回退**：把 .env 的 key 配到界面里
+            # 残留的别家 base URL 上照样 401。这里传空 base，走服务端默认值。
             try:
                 spec = _run(env_key, "")
                 used = "本机 .env 里的 Key"
@@ -1895,9 +1924,9 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
     if note:
         warn.insert(0, note)
     return {"spec": spec, "warnings": warn, "model": model,
-            "base": (base or "https://api.siliconflow.cn/v1") if not note
-                    else (os.environ.get("SILICONFLOW_BASE")
-                          or "https://api.siliconflow.cn/v1"),
+            # 回报**实际用的**接口地址，不要兜底成硅基 ——
+            # 用户看这一行来判断"到底走了哪一家"，写错等于骗人。
+            "base": base or srv_base,
             "used": used}
 
 
@@ -1970,6 +1999,16 @@ if __name__ == "__main__":
     for m in missing:
         print(f"[自检] {m['topic']} 缺数据：{m['need']}")
         print(f"        {m['fix']}")
+    # 超采样倍数：按容器可用内存自动定。**必须在日志里打出来** ——
+    # Render 免费档只有 512 MB，而 2 倍超采样出片峰值实测 848 MB，
+    # 超了会被**静默杀掉**（日志里只有一句 Killed）。打出来才知道
+    # 到底是"自动降到 1 倍了"还是"没降、被杀"。
+    from histmap_core import auto_supersample, memory_limit_mb
+    _lim = memory_limit_mb()
+    _ss = auto_supersample(2)
+    print(f"[自检] 内存上限 {_lim:.0f} MB（0=读不到）→ 超采样 {_ss} 倍"
+          + ("（已为低内存自动降档）" if _ss == 1 else ""))
+
     print(f"\n  工作台已启动：{url}（监听 {host}:{port}）\n  按 Ctrl+C 停止\n")
 
     # --open 才开浏览器：脚本里后台跑的时候不需要弹出窗口来打扰

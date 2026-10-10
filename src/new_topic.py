@@ -77,6 +77,26 @@ GB_API = "https://www.geoboundaries.org/api/current/gbOpen/{iso}/{adm}/"
 # 取几何 / 名字匹配 / 许可声明已移到 histmap_agent.geodata，
 # 在本文件顶部 import 回来（见那里的注释）。
 
+
+def _year(v) -> int:
+    """从年份的各种写法里取出**年份数字**。
+
+    为什么需要它：模型给的年份格式不固定，实测见过
+    `1387`、`"1387"`、`"1387-01-01"`、`"1387年"`。
+    而原来这里是直接 `int(y)`，于是模型一写完整日期就炸：
+
+        构建失败：ValueError: invalid literal for int() with base 10: '1387-01-01'
+
+    用户看到的是这句 ValueError，完全不知道是模型把年份写成了日期。
+    控制表的**键**也有同样的问题，所以归一化时也用它。
+    """
+    s = str(v).strip()
+    m = re.match(r"^(-?\d{1,4})", s)
+    if not m:
+        raise SystemExit(f"看不懂的年份写法：{v!r}（应是 1387 或 1387-01-01）")
+    return int(m.group(1))
+
+
 def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
     tid = spec.get("id") or _slug(spec.get("title") or "topic")
     kind = spec.get("kind") or "partition"
@@ -211,6 +231,21 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
 
     # ── 2) 控制表 ──
     ctrl_name = spec.get("control_file") or f"{tid}_control.json"
+    # **把控制表的年份键统一成纯年份。**
+    # 模型经常把键写成完整日期（实测 `"1387-01-01"`），而全系统都是按
+    # 纯年份查控制表的。不归一化的话，那一年的几何会以各种方式崩 ——
+    # 用户看到的就是「构建失败：invalid literal for int() with base 10:
+    # '1387-01-01'」，完全不知道是模型写错了格式。
+    _nk = {}
+    for k, v in list(ctrl_data.items()):
+        if str(k).startswith("_"):
+            _nk[k] = v
+            continue
+        try:
+            _nk[str(_year(k))] = v
+        except SystemExit:
+            _nk[k] = v            # 不是年份的键（别的东西）原样留着
+    ctrl_data = _nk
     ctrl_path = os.path.join(CTRL, ctrl_name)
     ctrl_data.setdefault("_comment", "由 new_topic.py 生成的题材规格，可直接手改。")
     if spec.get("source_note"):
@@ -228,13 +263,22 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
     # 那一年的几何就会构建失败。以控制表为准取交集，并把差异报出来。
     have_years = sorted(int(k) for k in ctrl_data
                         if not str(k).startswith("_") and str(k).isdigit())
-    want_years = [int(y) for y in (spec.get("years") or [])]
+    # 模型的 years 可能是 [1387] / ["1387"] / ["1387-01-01"]，统一取年份
+    want_years = [_year(y) for y in (spec.get("years") or [])]
     if want_years and have_years and set(want_years) - set(have_years):
         dropped = sorted(set(want_years) - set(have_years))
         report["warnings"].append(
             f"声明了 {dropped} 但控制表里没有这些年份，已从题材里去掉"
             f"（以控制表为准）")
-    years = [y for y in want_years if y in have_years] or have_years
+    # **以控制表为准，取它的全部年份。**
+    # 原来这里是「取交集，交集空才退回控制表」：
+    #     years = [y for y in want_years if y in have_years] or have_years
+    # 实测踩坑：「明代九边」模型声明 [1380,1442,1506,1550,1640]，
+    # 控制表里是 [1392,1424,1449,1550,1616,1630,1644]，
+    # **交集恰好只有 1550 一个** —— 于是题材只建了 1 帧，出片是一张静止图，
+    # 而控制表里明明有 7 年真实数据。交集"非空"不等于"够用"。
+    # 控制表是自己写下来/构建出来的数据，模型声明的年份只是建议，所以直接用它。
+    years = have_years
 
     # 反方向也要报：控制表里多出来的年份。早先只查了一个方向，结果法国大革命
     # 的控制表里留着一个 1793 —— 题材不声明它，所以永远不渲染，成了死数据，
@@ -269,8 +313,7 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
         units_key: units_val,
         "control": ctrl_name,
         "themes": spec.get("themes") or ["light"],
-        "default_date": spec.get("default_date") or
-                        (f"{years[len(years)//2]}-01-01" if years else None),
+        "default_date": _pick_default_date(spec.get("default_date"), years),
         "default_size": spec.get("default_size") or "16x9",
         "merge_by": spec.get("merge_by") or "owner",
         "source_note": spec.get("source_note") or "",
@@ -310,7 +353,7 @@ def _fit_bbox_after(tid: str, report: dict, quiet: bool) -> None:
         for t in doc["topics"]:
             if t.get("id") != tid:
                 continue
-            years = [int(y) for y in (t.get("years") or [])]
+            years = [_year(y) for y in (t.get("years") or [])]
             if not years:
                 return
             old = t.get("bbox")
@@ -463,17 +506,59 @@ def draft(ask: str, key: str = "", model: str = "Qwen/Qwen2.5-72B-Instruct",
         被丢掉，于是别家的 key 被发到硅基流动，必然 401。
     """
     from histmap_agent.draft_graph import draft_with_graph
+    from histmap_agent.llm import PROVIDERS, server_default
 
-    key = key or os.environ.get("SILICONFLOW_API_KEY") or (
-        _key_from_env_file() if allow_env_key else "")
+    # key 和 base **必须成对来自同一家**。
+    # 早先这里是两段独立的兜底：
+    #     key  = key or os.environ["SILICONFLOW_API_KEY"] or .env 里的
+    #     base = base or os.environ["SILICONFLOW_BASE"] or "api.siliconflow.cn"
+    # 于是「服务端配的是火山方舟」时会凑出**硅基的 key + 火山的地址**，
+    # 火山回 `401 AuthenticationError: The API key format is incorrect` ——
+    # 看着像 key 错了，其实是**拿错了那一家**。同一个 Key 在不同服务商之间
+    # 不通用，所以这两件事不能分开兜底。
+    base = (base or "").strip()
+    if not key and not base:
+        d = server_default()
+        key, base, model = d.key, d.base, (model or d.model)
+    elif not base:
+        raise SystemExit(
+            "给了 Key 却没给接口地址 —— 同一个 Key 在各家服务商之间不通用，"
+            "我不能替你猜是哪一家。请把 base 一起传（网页端会自动带上）。")
+    elif not key:
+        b = base.rstrip("/")
+        hit = next((n for n, p in PROVIDERS.items()
+                    if p["base"].rstrip("/") == b), None)
+        if not hit:
+            raise SystemExit(f"服务端没有配 {b} 这一家的 Key")
+        d = server_default(provider=hit)
+        key = d.key
+        model = model or d.model
+    base = base.rstrip("/")
     if not key:
-        raise SystemExit("起草规格需要模型 Key：设 SILICONFLOW_API_KEY，或用 --key 传")
-    base = (base or os.environ.get("SILICONFLOW_BASE")
-            or "https://api.siliconflow.cn/v1").rstrip("/")
+        raise SystemExit("起草规格需要模型 Key：在 .env 里配一家，或用 --key 传")
     cfg = LLMConfig(key=key, model=model, base=base)
     spec, _ = draft_with_graph(ask, cfg, verbose=verbose)
     return spec
 
+
+
+def _pick_default_date(want, years: list) -> str | None:
+    """挑一个**真的建出来了**的年份当默认日期。
+
+    为什么不能直接用模型给的值：模型的 `years` 和控制表的键经常对不上
+    （实测「明代九边」模型声明 1376/1435/1550/1600/1642，控制表里却是
+    1375/1442/1529/1640），而 `default_date` 是模型单独给的 —— 它给的
+    1550 属于被丢弃的那一套。照抄下来的后果是：题材注册成功、点击也正常，
+    但**打开就报「没有这一年的几何」**，用户完全不知道为什么。
+    """
+    if want:
+        try:
+            y = _year(want)
+            if y in years:
+                return str(want)
+        except SystemExit:
+            pass
+    return f"{years[len(years)//2]}-01-01" if years else None
 
 
 def _key_from_env_file() -> str:

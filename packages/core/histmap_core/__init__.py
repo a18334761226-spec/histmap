@@ -1,7 +1,7 @@
 """histmap-core · 统一数据契约 / 投影 / 样式 / 渲染 / 数据集 / 质量校验"""
 from .contract import Region, Frame, Series
 from .style import Style
-from .render import Renderer, Layout
+from .render import Renderer, Layout, auto_supersample, memory_limit_mb
 from .projection import (Projection, Viewport, Equirectangular, Mercator,
                          LambertConformal, get_projection)
 from .datasets.base import DatasetAdapter, Manifest, Registry, register
@@ -12,7 +12,7 @@ from .control import ControlLayer, ControlStats, ControlTimeline, build_legend
 
 __all__ = [
     "Region", "Frame", "Series",
-    "Style", "Renderer", "Layout",
+    "Style", "Renderer", "Layout", "auto_supersample", "memory_limit_mb",
     "Projection", "Viewport", "Equirectangular", "Mercator",
     "LambertConformal", "get_projection",
     "DatasetAdapter", "Manifest", "Registry", "register",

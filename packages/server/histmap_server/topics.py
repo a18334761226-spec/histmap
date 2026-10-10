@@ -284,7 +284,8 @@ def _render_boundary(topic: Topic, date: str, theme: str, size: str,
                      footer: str | None = None,
                      style_profile: dict | None = None,
                      strength: float = 1.0) -> Image.Image:
-    from histmap_core import Renderer, Layout, ControlTimeline, Style
+    from histmap_core import (Renderer, Layout, ControlTimeline, Style,
+                              auto_supersample)
     ctrl = topic.control_path()
     if not ctrl:
         raise FileNotFoundError(f"题材 {topic.id} 缺少控制表")
@@ -312,7 +313,8 @@ def _render_boundary(topic: Topic, date: str, theme: str, size: str,
     W, H, mode = _sizes(size)
     lay = Layout(width=W, height=H, mode=mode,
                  band_top_ratio=0.20, band_max_height_ratio=0.52)
-    r = Renderer(style, lay, projection="mercator", supersample=2)
+    r = Renderer(style, lay, projection="mercator",
+                 supersample=auto_supersample(2))
     img = r.render_frame(fr, bbox=topic.bbox, legend_items=legend,
                          legend_title="实际控制")
     _draw_overlays(img, r, tl, d, style, W, H, topic, footer=footer)
@@ -647,12 +649,60 @@ def stale_report() -> list[dict]:
     return out
 
 
-def _dynasty_geometry(topic: Topic, year: int) -> dict:
+def control_years(topic: "Topic") -> list[int]:
+    """控制表里**真正有数据**的那些年份。"""
+    d = _topic_json(topic)
+    if not isinstance(d, dict):
+        return []
+    return sorted(int(k) for k in d
+                  if not str(k).startswith("_") and str(k).isdigit())
+
+
+def resolve_control_year(topic: "Topic", year: int) -> tuple[int, bool]:
+    """把「用户要的年份」映射到「用哪一行控制数据」，并说明是否被夹到范围外。
+
+    历史地图集的惯例：**一个控制格局持续到它改变为止**。所以 1506 年该用
+    「不晚于 1506 的最近一行」，而不是要求控制表里正好有 1506。
+
+    返回 (control_year, clamped)：clamped=True 表示用户要的年份落在题材数据
+    覆盖范围之外（比如拿唐藩镇题材问 1506 年），这时用最近的一端并**如实说明**，
+    而不是硬报一个「缺少几何」。
+    """
+    ys = control_years(topic)
+    if not ys:
+        return year, False
+    if year < ys[0]:
+        return ys[0], True
+    if year > ys[-1]:
+        return ys[-1], True
+    le = [y for y in ys if y <= year]
+    return (le[-1] if le else ys[0]), False
+
+
+def _dynasty_geometry(topic: "Topic", year: int) -> dict:
+    """取某一年的几何。**没有就当场算**。
+
+    为什么必须能现算：用户要的是「任何年份的任何地图」，而原来这里是
+    「文件不在就报错，让人自己去命令行跑 build_dynasty_map」——
+    于是预设年份之外的任何一年都出不了图，用户看到的是
+    「缺少 tang 1506 年的几何」。渲染一步 1–3 秒，按需生成完全可接受。
+    """
     p = os.path.join(PROC, f"{topic.id}_{year}_map.geojson")
     if not os.path.exists(p):
-        raise FileNotFoundError(
-            f"缺少 {topic.id} {year} 年的几何。先跑：\n"
-            f"  python src/build_dynasty_map.py --topic {topic.id} --year {year}")
+        control_year, _clamped = resolve_control_year(topic, year)
+        import sys as _sys
+        _src = os.path.join(ROOT, "src")
+        if _src not in _sys.path:
+            _sys.path.insert(0, _src)
+        import build_dynasty_map as _B
+        try:
+            _B.build(topic.id, year, force=False, quiet=True,
+                     control_year=control_year)
+        except Exception as e:
+            raise FileNotFoundError(
+                f"{topic.id} {year} 年的几何现算失败：{type(e).__name__}: {e}") from None
+    if not os.path.exists(p):
+        raise FileNotFoundError(f"现算之后仍然没有 {topic.id} {year} 年的几何")
     return _cached_json(p, _dyn_cache, (topic.id, year))
 
 
@@ -719,7 +769,8 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                     strength: float = 1.0,
                     period: str | None = None,
                     text_only: bool = False) -> Image.Image:
-    from histmap_core import Renderer, Layout, Region, Frame, Style
+    from histmap_core import (Renderer, Layout, Region, Frame, Style,
+                              auto_supersample)
     year = int(str(date).split("-")[0])          # 别用 [:4]，807 是三位数
     gj = _dynasty_geometry(topic, year)
     regions = []
@@ -780,7 +831,8 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
     if style_profile:
         prof, legend = _style_colors(style, fr, legend, topic, theme,
                                      style_profile, strength)
-    r = Renderer(style, lay, projection="mercator", supersample=2)
+    r = Renderer(style, lay, projection="mercator",
+                 supersample=auto_supersample(2))
     img = r.render_frame(fr, bbox=_fit_frame_bbox(regions, topic.bbox),
                          legend_items=legend, legend_title="所属政权",
                          text_only=text_only)
@@ -959,6 +1011,23 @@ def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
           "style_profile": style_profile, "strength": strength,
           "text_only": text_only}
     if t.kind == "dynasty":
+        # **超出题材数据范围的年份要如实说明。**
+        # 用户要「任何年份」，我们能给 —— 但唐藩镇题材的控制表只到 906 年，
+        # 拿它问 1506 年时用的是 906 年的格局。如果标题照样写 1506 年，
+        # 那就是一张**看着权威、其实是错的**图。所以强制加一行说明。
+        try:
+            _cy, _clamped = resolve_control_year(t, int(str(date).split("-")[0]))
+        except Exception:
+            _clamped = False
+        if _clamped:
+            ys = control_years(t)
+            # 不用 ⚠ 这类符号：实测字体里没有这个字形，会画成一个空心方框
+            note = (f"注意：本题材数据只覆盖 {ys[0]}–{ys[-1]} 年；"
+                    f"本图用的是 {_cy} 年的控制格局，不是 {str(date)[:4]} 年。")
+            # **必须写回 kw。** 原来只改了局部变量 footer，而 kw 是在这之前
+            # 就构造好的字典 —— 于是这行说明根本没传到渲染函数，
+            # 图上标题照样写着 1506 年、画的却是 906 年的格局。
+            kw["footer"] = note if footer is None else f"{footer}　{note}"
         return _render_dynasty(t, date, theme, size, period=period, **kw)
     # boundary 类还没实现 text_only（它的文字层走 ControlTimeline，
     # 结构不一样）。明确说清，而不是让它因为多余的参数报 TypeError。
