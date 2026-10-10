@@ -242,6 +242,88 @@ def palette_collisions(names) -> dict:
     return {c: v for c, v in inv.items() if len(v) > 1}
 
 
+# 模型给的配色，两个颜色靠得比这个还近就认为「图上分不出来」。
+# 阈值是**量出来的**，不是拍的。实测各题材现有手工配色（绝大多数是模型起草时
+# 给的）的最小感知距离：
+#     明/南明那类       0.0966      良好
+#     印巴/孟加拉国      0.0881
+#     联邦/邦联         0.0803
+#     普鲁士/奥地利      0.0722
+#     宋/辽/西夏/金      0.0556      偏挤但还能分
+#     两个政权同色       0.0000      完全分不出（这是要拦的）
+# 0.045 落在「偏挤但能分」和「真的分不出」之间，不会误伤现有数据。
+MIN_PALETTE_GAP = 0.045
+
+
+def validate_palette(pal: dict, owners: list) -> tuple[dict, list[str]]:
+    """挑出**真正能用**的模型配色，并报告它有什么毛病。
+
+    为什么要验：`_palette` 是模型起草题材时给的，而它在赋值处是
+    `color = pal.get(own) or stable_color(...)` —— **模型给的颜色会直接盖掉
+    自动配色**。也就是说我做的「按分类数算最大感知分离」在有色板时完全绕过。
+    模型给的色板不受任何约束，于是可能出现：
+
+      · 两个政权拿到几乎一样的颜色（图上分不出谁是谁）—— 这是最常见的
+      · 同一个颜色给两个不同政权（撞色）
+      · 值根本不是颜色：`_palette` 里混进注释，比如
+        ww2-europe 的 `_divided_note = "被多国瓜分/分区占领……"`
+        （实测存在，会让任何遍历色板的代码崩在 int(x, 16) 上）
+      · 嵌套结构（二战那种 `{政权: {状态: 颜色}}`）—— 这套格式只给
+        boundary 类用，dynasty 类拿到会是一个 dict 而不是字符串
+
+    策略：只要有一项不过，就**整份丢掉**，改用自动配色，并把原因报出来。
+    不用「挑好的、补坏的」—— 那会得到一半模型色一半机器色，更难看也难解释。
+    """
+    issues: list[str] = []
+    clean: dict = {}
+    for k, v in (pal or {}).items():
+        if str(k).startswith("_"):          # 注释键，不是颜色
+            continue
+        if isinstance(v, dict):
+            issues.append(f"「{k}」的值是嵌套字典而不是颜色（那种格式只给 boundary 类用）")
+            continue
+        if not isinstance(v, str):
+            issues.append(f"「{k}」的值不是字符串：{type(v).__name__}")
+            continue
+        h = v.strip()
+        if not (len(h) == 7 and h.startswith("#")):
+            issues.append(f"「{k}」不是 #rrggbb 格式：{h[:40]!r}")
+            continue
+        try:
+            int(h[1:], 16)
+        except ValueError:
+            issues.append(f"「{k}」不是合法十六进制：{h!r}")
+            continue
+        clean[k] = h.lower()
+
+    # 撞色 / 太近
+    try:
+        from style_from_image import _hex_to_rgb01, _srgb_to_oklab
+        labs = {k: _srgb_to_oklab(_hex_to_rgb01(v)) for k, v in clean.items()}
+        inv: dict = {}
+        for k, v in clean.items():
+            inv.setdefault(v, []).append(k)
+        for c, ks in inv.items():
+            if len(ks) > 1:
+                issues.append(f"{'、'.join(ks)} 是同一个颜色 {c}")
+        keys = sorted(labs)
+        worst = None
+        for i, a in enumerate(keys):
+            for b in keys[i + 1:]:
+                d = sum((x - y) ** 2 for x, y in zip(labs[a], labs[b])) ** 0.5
+                if worst is None or d < worst[0]:
+                    worst = (d, a, b)
+        if worst and worst[0] < MIN_PALETTE_GAP:
+            issues.append(f"「{worst[1]}」与「{worst[2]}」的颜色太接近"
+                          f"（感知距离 {worst[0]:.3f} < {MIN_PALETTE_GAP}），图上分不出来")
+    except Exception as e:
+        issues.append(f"配色校验本身失败：{type(e).__name__}: {e}")
+
+    if issues:
+        return {}, issues
+    return clean, []
+
+
 def build(topic_id: str, year: int, max_km: float | None = None,
           simplify: float = 0.02, force: bool = False, quiet: bool = False):
     from histmap_server import topics as T
@@ -322,7 +404,12 @@ def build(topic_id: str, year: int, max_km: float | None = None,
     disp = raw.get("_display") or {}
     # 配色覆盖：同色系政权靠调色板凑不出稳定区分时，直接在数据里点名要什么色。
     # 例：北宋/南宋要同色（同一政权延续），金要和西夏的灰蓝拉开。
-    pal = raw.get("_palette") or {}
+    # **但模型给的要先验**：它在赋值处会直接盖掉自动配色（见 validate_palette 的说明）
+    pal, pal_issues = validate_palette(raw.get("_palette") or {}, [])
+    if pal_issues and not quiet:
+        print(f"    ！控制表里给的配色不能用，已改用自动配色：")
+        for s in pal_issues:
+            print(f"        {s}")
     # 换色键：让「南宋」沿用「宋」的颜色，颜色跟政权走而不是跟名字走
     ckey = raw.get("_color_key") or {}
     # 自动配色按**全题材全年龄**的归属方一次性分配，跨年份才不会换色
@@ -504,7 +591,11 @@ def build_from_polygons(t, year: int, uf: str, raw: dict, owner: dict,
 
     gj = _json.load(open(uf, encoding="utf-8"))
     disp = raw.get("_display") or {}
-    pal = raw.get("_palette") or {}
+    pal, pal_issues = validate_palette(raw.get("_palette") or {}, [])
+    if pal_issues and not quiet:
+        print("    ！控制表里给的配色不能用，已改用自动配色：")
+        for s in pal_issues:
+            print(f"        {s}")
     ckey = raw.get("_color_key") or {}
     owners_all = all_owners(raw)
     merge_by = t.raw.get("merge_by", "owner")

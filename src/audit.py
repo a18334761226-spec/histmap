@@ -137,6 +137,40 @@ def check_geometry(doc):
         if eng:
             warn(f"{tid}: {len(eng)} 个归属方名不是中文 —— {sorted(eng)[:6]}")
 
+        # **模型编的单元名**：这些名字在数据集里不存在，图上就不会有那块区域。
+        # 这是「地图不对、缺区域缺地名」最常见的原因，而它原本被 --quiet 吞掉，
+        # 用户只能看到结果不对、不知道原因。build_dynasty_map 把它们记在
+        # geometry 的 _meta.units_missing 里，这里报出来。
+        allmiss: dict = {}
+        for y in years:
+            p = os.path.join(PROC, f"{tid}_{y}_map.geojson")
+            try:
+                meta = (json.load(open(p, encoding="utf-8")).get("_meta") or {})
+            except Exception:
+                continue
+            for nm in (meta.get("units_missing") or []):
+                allmiss.setdefault(str(nm), 0)
+                allmiss[str(nm)] += 1
+        if allmiss:
+            names = sorted(allmiss)
+            warn(f"{tid}: {len(names)} 个单元名在数据源里不存在，"
+                 f"这些区域**图上不会出现**：{names[:8]}"
+                 f"{'…' if len(names) > 8 else ''}（模型写错了名字）")
+
+        # 配色：模型给的色板会盖掉自动配色，质量参差。这里量它的感知分离度。
+        try:
+            sys.path.insert(0, HERE)
+            import build_dynasty_map as B
+            tp = T.get(tid)
+            ctrl = json.load(open(tp.control_path(), encoding="utf-8"))
+            clean, issues = B.validate_palette(ctrl.get("_palette") or {}, [])
+            if issues:
+                warn(f"{tid}: 控制表里的配色有问题，构建时会改用自动配色：{issues[:2]}")
+            elif clean:
+                ok(f"{tid}: 配色 {len(clean)} 色通过校验")
+        except Exception as e:
+            warn(f"{tid}: 配色校验失败 {type(e).__name__}: {e}")
+
 
 def check_control(doc):
     head("控制表与年份一致性")

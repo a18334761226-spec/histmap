@@ -366,6 +366,33 @@ def _rebuild(tid: str, entry: dict, report: dict, quiet: bool) -> None:
     if not quiet:
         print(f"  几何构建 {ok}/{len(years)} 年")
 
+    # **把「模型编的单元名」捞出来报给用户。**
+    # build_dynasty_map 会把这些名字记在 geometry 的 _meta 里，但 _rebuild
+    # 是用 --quiet 跑的，那些信息**全被吞掉了**。后果是：模型编错几个单元名，
+    # 图上就静悄悄少几块区域，用户只看到「地图不对、缺地名」，
+    # 完全不知道是模型把名字写错了。
+    miss: dict = {}
+    for y in years:
+        p = os.path.join(PROC, f"{tid}_{y}_map.geojson")
+        if not os.path.exists(p):
+            continue
+        try:
+            meta = (json.load(open(p, encoding="utf-8")).get("_meta") or {})
+        except Exception:
+            continue
+        for nm in (meta.get("units_missing") or []):
+            miss.setdefault(str(nm), []).append(y)
+    if miss:
+        names = sorted(miss)
+        report["units_missing"] = names
+        report["warnings"].append(
+            f"有 {len(names)} 个单元名在数据集里找不到，这些区域**图上不会出现**："
+            f"{names[:8]}{'…' if len(names) > 8 else ''}"
+            f"（模型写错了名字；数据源里没有的单元无法绘制，"
+            f"要么改控制表换成真实单元名，要么去掉）")
+    if miss and not quiet:
+        print(f"  ！{len(miss)} 个单元名对不上，图上会缺这些区域：{sorted(miss)[:8]}")
+
 
 # ── 让模型起草规格 ────────────────────────────────────────────────────
 # 起草提示词已移到 histmap_agent.prompts（那边是唯一一份）。
