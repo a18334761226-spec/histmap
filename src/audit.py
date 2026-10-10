@@ -142,6 +142,7 @@ def check_control(doc):
     head("控制表与年份一致性")
     sys.path.insert(0, HERE)
     import reconcile_years as RY
+    from histmap_server import topics as T
     for t in doc["topics"]:
         c = t.get("control")
         if not c:
@@ -162,11 +163,19 @@ def check_control(doc):
             ok(f"{t['id']}: 控制表 {len(ctrl_years)} 年，与题材声明一致")
         # 相邻年份状态完全相同 = 两帧画出来一模一样。
         # 这不是抽象担忧：实测 5 个题材都有 —— 宋的 1040 与 1080 控制表逐字相同，
-        # 印度分治的 1950/1960/1970 三年同态。成片里就是同一张图连播两遍。
-        dup = RY.duplicate_states(d)
+        # 印度分治的 1947/1950/1960/1970 四年同态。出片时现在会自动合并成一帧
+        # （标题写年份区间，见 app.merge_identical_frames），但根子上还是缺史实。
+        tp = T.get(t["id"])
+        dup = RY.duplicate_states(tp) if tp else []
         if dup:
             warn(f"{t['id']}: {len(dup)} 个年份与上一年状态完全相同 {dup}"
-                 f" —— 会渲染出重复帧，需要补真实的史实变化或删掉这一年")
+                 f" —— 出片会合并成一帧；要真正的演化得先补史实变化")
+        # 全部年份同态 = 这个题材根本没有动画可言，出来是一张静止图。
+        if tp:
+            runs = T.identical_runs(tp)
+            if len(runs) == 1 and len(runs[0]) > 1:
+                bad(f"{t['id']}: 声明了 {len(runs[0])} 个年份但疆域全程没变"
+                    f"（{runs[0][0]}–{runs[0][-1]}）—— 出片只能是一张静止图")
 
 
 def check_orphans(doc):

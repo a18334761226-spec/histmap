@@ -38,20 +38,22 @@ except Exception:
     pass
 
 
-def state_of(ctrl: dict, year: int):
+def _topic(tid: str):
+    """按 id 取服务端的 Topic 对象。
+
+    「两年的控制状态是否相同」只能有**一份**实现 —— 服务端出片时要靠它合并
+    同态帧、出片前要靠它提示、这个脚本要报告。各写一份迟早在三种格式
+    （按归属方分组 / 带元信息的嵌套 / 按单元列表）和 _palette 这类注释键上
+    出现不一致，那时「脚本说没问题、出片却合并了」就成了新的怪事。
+    """
+    from histmap_server import topics as T
+    return T.get(tid)
+
+
+def state_of(topic, year: int):
     """某一年的控制状态，用于比较「这两年画出来一样吗」。"""
-    v = ctrl.get(str(year))
-    if not isinstance(v, dict):
-        return None
-    out = []
-    for k, u in v.items():
-        if isinstance(u, list):
-            out.append((k, tuple(sorted(u))))
-        elif isinstance(u, dict):
-            out.append((k, tuple(sorted(u.items()))))
-        else:
-            out.append((k, u))
-    return tuple(sorted(out, key=lambda x: str(x[0])))
+    from histmap_server import topics as T
+    return T.control_state(topic, year)
 
 
 def control_years(ctrl: dict) -> list[int]:
@@ -59,15 +61,22 @@ def control_years(ctrl: dict) -> list[int]:
                   if not str(k).startswith("_") and str(k).isdigit())
 
 
-def duplicate_states(ctrl: dict) -> list[int]:
+def duplicate_states(topic) -> list[int]:
     """哪些年份的控制状态与**上一年完全相同**（画出来是同一张图）。
 
     实测这是普遍问题，不是个例：宋的 1040 与 1080 控制表逐字相同，
-    印度分治的 1950/1960/1970 三年同态。成片里就是同一张图连播两遍。
+    印度分治的 1947/1950/1960/1970 四年同态。成片里就是同一张图连播两遍。
     """
-    ys = control_years(ctrl)
+    from histmap_server import topics as T
+    ys = sorted(int(y) for y in (topic.raw.get("years") or []))
     return [b for a, b in zip(ys, ys[1:])
-            if state_of(ctrl, a) is not None and state_of(ctrl, a) == state_of(ctrl, b)]
+            if state_of(topic, a) is not None and state_of(topic, a) == state_of(topic, b)]
+
+
+def identical_runs(topic) -> list[list[int]]:
+    """连续同态的年份分组，如 [[980], [1040, 1080], [1120]]。"""
+    from histmap_server import topics as T
+    return T.identical_runs(topic)
 
 
 def examine(t: dict):
@@ -83,7 +92,9 @@ def examine(t: dict):
     ty = sorted(int(y) for y in (t.get("years") or []))
     dead = [y for y in cy if y not in ty]
     miss = [y for y in ty if y not in cy]
-    return ctrl, p, cy, ty, dead, miss, duplicate_states(ctrl)
+    tp = _topic(t["id"])
+    dup = duplicate_states(tp) if tp else []
+    return ctrl, p, cy, ty, dead, miss, dup
 
 
 def main():
@@ -99,6 +110,7 @@ def main():
         if not r:
             continue
         ctrl, path, cy, ty, dead, miss, dup = r
+        tp = _topic(t["id"])
         if not (dead or miss or dup):
             print(f"  ✓ {t['id']:24s} 控制表 {len(cy)} 年，与题材声明一致")
             continue
@@ -111,7 +123,8 @@ def main():
         if dead:
             print(f"      ! 控制表里多余（永不渲染）{dead}")
         if dup:
-            print(f"      ! 相邻年份状态完全相同 {dup} —— 画出来是重复帧")
+            print(f"      ! 相邻年份状态完全相同 {dup} —— 出片会合并成一帧"
+                  f"（标题写年份区间）；要真正的演化得先补史实变化")
 
         if not args.fix:
             continue
@@ -119,11 +132,11 @@ def main():
         # 只删「多余 且 与相邻的某个已声明年份状态相同」的年份
         to_drop = []
         for y in dead:
-            sig = state_of(ctrl, y)
+            sig = state_of(tp, y) if tp else None
             if sig is None:
                 continue
             neighbours = [n for n in ty if abs(n - y) <= 3]
-            if any(state_of(ctrl, n) == sig for n in neighbours):
+            if any(state_of(tp, n) == sig for n in neighbours):
                 to_drop.append(y)
         if not to_drop:
             continue

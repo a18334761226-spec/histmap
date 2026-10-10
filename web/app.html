@@ -1167,7 +1167,13 @@ async function submit(mode){
     if (!r.ok) throw new Error(errText(j.detail, '提交失败'));
     lastJob = {jid:j.job};
     rendered=[]; renderedHolds=[]; drawSb(); drawFilm();
-    setStat(`${mode==='frames'?'出图':'出片'}中 · ${j.n_dates} 帧 · 约 ${j.est_seconds}s`, 0);
+    // 显示**实际要出的帧数**（j.n_frames），不是原始年份数：选了 6 个年份
+    // 但要出 4 帧时，写「6 帧」会让人以为界面算错了。
+    const cnt = (j.n_frames && j.n_frames !== j.n_dates)
+      ? `${j.n_frames} 帧（${j.n_dates} 个年份，${j.n_dates - j.n_frames} 个疆域未变已合并）`
+      : `${j.n_frames || j.n_dates} 帧`;
+    setStat(`${mode==='frames'?'出图':'出片'}中 · ${cnt} · 约 ${j.est_seconds}s`, 0);
+    if (j.note) toast(j.note);
     await poll(j.job, mode);
   } catch(e){
     toast(e.message); setStat('任务失败');
@@ -1214,9 +1220,14 @@ async function poll(jid, mode){
       } else if (rendered.length){
         showPlate(rendered[Math.min(cur, rendered.length-1)]);
       }
+      // 同态合并 / 只有一种状态 这类说明必须让用户看见：
+      // 它解释了「为什么我选了 6 个年份却只出 4 帧」，不说就成了新的谜。
+      const noteTxt = ((res.notes && res.notes.length) ? res.notes
+        : (job.notes || [])).join('；');
       setStat(mode === 'frames'
-        ? `全部 ${res.n_frames} 帧已出 · 按播放键预演`
-        : `完成 · ${res.n_frames} 帧 / ${res.seconds}s`);
+        ? `全部 ${res.n_frames} 帧已出 · 按播放键预演` + (noteTxt ? ` · ${noteTxt}` : '')
+        : `完成 · ${res.n_frames} 帧 / ${res.seconds}s` + (noteTxt ? ` · ${noteTxt}` : ''));
+      if (noteTxt) toast(noteTxt);
       toast(mode === 'frames'
         ? `全部 ${res.n_frames} 帧出好了，走带上的播放键可以预演`
         : `视频合成完成：${res.n_frames} 帧 / ${res.seconds}s`);

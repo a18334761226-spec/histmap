@@ -314,6 +314,9 @@ class FrameReq(BaseModel):
     title: str | None = None
     subtitle: str | None = None
     footer: str | None = None
+    # 「这一帧代表哪一段」，如 "1040–1080"。连续几年疆域没变时合并成一帧，
+    # 标题就得写区间 —— 否则用户看到标题「1080 年」而画面是 1040 的样子。
+    period: str | None = None
 
 
 class CardReq(BaseModel):
@@ -360,6 +363,71 @@ class VideoReq(BaseModel):
     mode: str = "video"
 
 
+def merge_identical_frames(scene_id: str, frames: list["FrameReq"]):
+    """把「控制状态相同」的相邻帧并成一帧，并给它一个年份区间。
+
+    为什么要做：题材声明的年份未必年年在变。实测 6 个题材里 5 个有这个问题 ——
+    宋的 1040 与 1080 控制表逐字相同，印巴分治的 1947/1950/1960/1970 四年同态。
+    成片里就是同一张地图连播两遍，观众会以为卡住了。
+
+    合并（而不是删年份）是对的：控制表里那一年确实就是这个状态，
+    删掉等于篡改史实；合并成「1040–1080 年」才是历史地图集的通常做法。
+
+    返回 (合并后的帧, 说明文字列表, 是否只有一个状态)。
+    """
+    if len(frames) < 2:
+        return frames, [], False
+    t = topics.get(scene_id)
+    if not t or t.kind != "dynasty":
+        return frames, [], False
+
+    out: list[FrameReq] = []
+    notes: list[str] = []
+    for f in frames:
+        try:
+            y = int(str(f.date).split("-")[0])
+        except Exception:
+            out.append(f)
+            continue
+        sig = topics.control_state(t, y)
+        prev = out[-1] if out else None
+        prev_y = None
+        if prev is not None:
+            try:
+                prev_y = int(str(prev.date).split("-")[0])
+            except Exception:
+                prev_y = None
+        if (prev is not None and prev_y is not None and sig is not None
+                and topics.control_state(t, prev_y) == sig):
+            # 同态：不新增一帧，把上一帧代表的区间延长到这一年。
+            # period 只在「跨度 > 1 年」时才有意义，且不覆盖用户自己写的 title。
+            a, b = str(prev_y), str(y)
+            prev_period = getattr(prev, "period", None)
+            start = prev_period.split("\u2013")[0] if prev_period else a
+            out[-1] = prev.model_copy(update={"period": f"{start}\u2013{b}"})
+            continue
+        out.append(f)
+
+    merged = [f for f in out if getattr(f, "period", None)]
+    if merged:
+        ranges = [f.period for f in merged]
+        notes.append(
+            f"{len(frames)} 个年份里有 {len(frames) - len(out)} 个与上一年疆域完全相同，"
+            f"已合并成一帧（{('、'.join(ranges))} 年）—— 硬放两帧会让人以为卡住了")
+    return out, notes, len(out) == 1 and len(frames) > 1
+
+
+def raw_dates(req: VideoReq) -> list[str]:
+    """这次请求**原始**选中了哪些日期（合并同态帧之前）。
+
+    「有几个年份没变化」「是不是只有一种状态」这类判断必须看原始日期；
+    拿合并后的结果去算，年数已经被改小，结论就不对了。
+    """
+    if req.frames:
+        return [f.date for f in req.frames[:req.max_frames]]
+    return pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)
+
+
 def plan_frames(req: VideoReq) -> list[FrameReq]:
     """把两种给帧方式统一成一份分镜。
 
@@ -383,8 +451,9 @@ def plan_frames(req: VideoReq) -> list[FrameReq]:
                     continue
             out.append(f.model_copy(update={"date": d}))
         return out
-    return [FrameReq(date=d) for d in
-            pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)]
+    sel = pick_dates(req.scene, req.date_from, req.date_to, req.max_frames)
+    merged, _, _ = merge_identical_frames(req.scene, [FrameReq(date=d) for d in sel])
+    return merged
 
 
 def pick_dates(scene_id: str, date_from: str, date_to: str, max_frames: int):
@@ -441,9 +510,19 @@ def _animate_job(jid: str, req: VideoReq):
     if not frames:
         jobs.update(jid, status="failed", error="这个区间里没有可渲染的日期")
         return
+    # 合并掉同态帧之后，如果只剩一帧，那这个题材根本没有「演化」可看 ——
+    # 早点说清楚，别让用户等完整套出图才发现片子是张静止图。
+    # 判断必须基于**原始**日期（plan_frames 已经合并过一次了）。
+    _, merge_notes, single = merge_identical_frames(
+        req.scene, [FrameReq(date=d) for d in raw_dates(req)])
+    if single:
+        merge_notes.append("注意：这个题材声明的那几年疆域完全相同，"
+                           "只有一种状态，出片会是一张静止的图 —— "
+                           "要动画就得先在控制表里补上真实的疆域变化。")
     n = len(frames)
     jobs.update(jid, status="running", total=n, frames=[],
-                message=f"准备渲染 {n} 张")
+                message=f"准备渲染 {n} 张",
+                notes=merge_notes)
 
     # ── 1) 逐张出图 ──
     vprof = _norm_profile(req.style_profile)
@@ -452,7 +531,8 @@ def _animate_job(jid: str, req: VideoReq):
         holds.append(max(0.05, f.hold if f.hold else req.hold))
         img = topics.render(req.scene, f.date, req.theme, req.size,
                             title=f.title, subtitle=f.subtitle, footer=f.footer,
-                            style_profile=vprof, strength=req.strength)
+                            style_profile=vprof, strength=req.strength,
+                            period=getattr(f, "period", None))
         img = _apply_quality(img, RenderReq(scene=req.scene, date=f.date, theme=req.theme,
                                             size=req.size, style=req.style))
         p = os.path.join(fdir, f"{i:04d}.png")
@@ -467,11 +547,14 @@ def _animate_job(jid: str, req: VideoReq):
     cards = {}
     if req.mode == "frames":
         # 只要图：把每帧的停留时长一并带上，前端可以照真实节奏预演
+        r0 = {"video": None, "frames": urls, "n_frames": len(urls),
+              "holds": [round(h, 2) for h in holds],
+              "seconds": round(sum(holds), 1), "size": req.size,
+              "verify": "只出图模式", "zip": f"/media/jobs/{jid}/frames.zip"}
+        if merge_notes:
+            r0["notes"] = merge_notes
         jobs.update(jid, status="done", progress=1.0, message="全部图片已出",
-                    result={"video": None, "frames": urls, "n_frames": len(urls),
-                            "holds": [round(h, 2) for h in holds],
-                            "seconds": round(sum(holds), 1), "size": req.size,
-                            "verify": "只出图模式", "zip": f"/media/jobs/{jid}/frames.zip"})
+                    result=r0)
         return
 
     jobs.update(jid, message="合成视频…", progress=0.9)
@@ -554,6 +637,8 @@ def _animate_job(jid: str, req: VideoReq):
     res.update(extra)
     if cards:
         res["cards"] = cards
+    if merge_notes:
+        res["notes"] = merge_notes
     jobs.update(jid, status="done", progress=1.0, message="完成", result=res)
 
 
@@ -752,15 +837,25 @@ def api_video(req: VideoReq):
     jobs.run_async(_animate_job, jid, req)
     # 截断了就明说，别让界面显示的数字和实际出的帧数对不上
     note = ""
+    raw = raw_dates(req)
     if not req.frames:
         lo, hi = sorted((_days(req.date_from), _days(req.date_to)))
         in_range = sum(1 for d in (topics.get(req.scene).dates() or [])
                        if lo <= _days(d) <= hi)
-        if in_range > len(planned):
+        if in_range > len(raw):
             note = (f"区间内 {in_range} 个时间点，超过上限 {req.max_frames}，"
-                    f"已均匀抽稀为 {len(planned)} 帧")
-    return {"job": jid, "n_dates": len(planned), "max_frames": req.max_frames,
+                    f"已均匀抽稀为 {len(raw)} 帧")
+    # 同态合并也从**原始日期**算，不能拿已合并的结果再算一遍 ——
+    # 那样 len(frames) 已经不是原始年数，「只剩一个状态」这个判断会失灵。
+    merged, merge_notes, single = merge_identical_frames(
+        req.scene, [FrameReq(date=d) for d in raw])
+    if merge_notes:
+        note = (note + "；" if note else "") + "；".join(merge_notes)
+    return {"job": jid, "n_dates": len(raw), "n_frames": len(planned),
+            "max_frames": req.max_frames,
             "dates": [f.date for f in planned], "note": note,
+            "merged": len(raw) - len(merged),
+            "single_state": bool(single),
             "est_seconds": round(sum(
                 max(0.05, f.hold if f.hold else req.hold) for f in planned), 1)}
 
@@ -771,8 +866,14 @@ def api_plan(req: VideoReq):
     if not topics.get(req.scene):
         raise HTTPException(404, "没有这个题材")
     planned = plan_frames(req)
-    return {"frames": [{"date": f.date, "hold": f.hold} for f in planned],
-            "n_dates": len(planned),
+    raw = raw_dates(req)
+    merged, merge_notes, single = merge_identical_frames(
+        req.scene, [FrameReq(date=d) for d in raw])
+    return {"frames": [{"date": f.date, "hold": f.hold,
+                        "period": getattr(f, "period", None)} for f in planned],
+            "n_dates": len(raw), "n_frames": len(planned),
+            "merged": len(raw) - len(merged),
+            "notes": merge_notes, "single_state": bool(single),
             "est_seconds": round(sum(
                 max(0.05, f.hold if f.hold else req.hold) for f in planned), 1)}
 

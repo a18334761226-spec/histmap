@@ -332,8 +332,20 @@ def main():
             jid, want = r["job"], r.get("n_dates")
             # 上限是防手滑的，不是暗坑：要么全出，要么在 note 里明说抽稀了
             expect = min(len(ds), r.get("max_frames") or len(ds))
+            # 同态合并会**减少**帧数，所以「声明的帧数」和「实际出的帧数」可以不等 ——
+            # 但必须一致地对得上：n_frames = n_dates - merged。
+            nf = r.get("n_frames")
+            mg = r.get("merged") or 0
+            check(f"[{sid}] 帧数与合并数自洽（n_frames = n_dates - merged）",
+                  nf is None or nf == (r.get("n_dates") or 0) - mg,
+                  f"n_frames={nf} n_dates={r.get('n_dates')} merged={mg}")
+            if mg:
+                check(f"[{sid}] 合并同态帧时说清了", bool(r.get("note")),
+                      str(r.get("note"))[:160])
+            want = nf if nf is not None else want
             check(f"[{sid}] 帧数=min(区间点数, 上限) 且与声明一致",
-                  want == expect, f"n_dates={want} 期望={expect}")
+                  want is not None and want <= expect,
+                  f"n_frames={want} 上限={expect}")
             if len(ds) > expect:
                 check(f"[{sid}] 抽稀时说清了", bool(r.get("note")), str(r.get("note")))
             j = {}
@@ -393,6 +405,29 @@ def main():
         st, r = call(B, "/api/key/test", "POST", {}, headers={"X-Api-Key": key})
         check("/api/key/test 对 key 时报可用", st == 200 and r.get("ok") is True,
               f"status={st} {str(r)[:160]}")
+
+    # ── 5c) 分镜：同态帧合并的不变量 ──
+    # 这条检查是为了防「界面说 6 帧、实际出 4 帧」这类对不上的问题。
+    # 不写死具体题材的帧数（数据会改），只查关系式。
+    for s in (scenes or []):
+        ds = s.get("dates") or []
+        if len(ds) < 2:
+            continue
+        st, r = call(B, "/api/plan", "POST",
+                     {"scene": s["id"], "date_from": ds[0], "date_to": ds[-1]},
+                     timeout=60)
+        if st != 200:
+            check(f"[{s['id']}] /api/plan 可用", False, f"status={st} {str(r)[:120]}")
+            continue
+        nd, nf, mg = r.get("n_dates"), r.get("n_frames"), r.get("merged") or 0
+        check(f"[{s['id']}] 分镜自洽 n_frames = n_dates - merged",
+              nd is not None and nf == nd - mg, f"n_dates={nd} n_frames={nf} merged={mg}")
+        check(f"[{s['id']}] single_state 与帧数一致",
+              bool(r.get("single_state")) == (nf == 1),
+              f"single_state={r.get('single_state')} n_frames={nf}")
+        if mg:
+            check(f"[{s['id']}] 合并了就说清了", bool(r.get("notes")),
+                  str(r.get("notes"))[:140])
 
     if not key:
         print("  SKIP  对话真实调用（没找到 .env 里的 key）")

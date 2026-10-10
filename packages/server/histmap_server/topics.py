@@ -477,6 +477,53 @@ def _topic_json(topic: Topic) -> dict:
     return _cached_json(p, _ctrl_cache, topic.id)
 
 
+def control_state(topic: Topic, year: int):
+    """某一年的控制状态指纹，或 None（这一年没数据）。
+
+    用来判断「这两年画出来是不是同一张图」。必须是**与结构无关**的比较：
+    控制表有三种格式（按归属方分组 / 带元信息的嵌套 / 按单元列表），
+    还有 _palette、_display 这类下划线开头的注释键，都得排除掉，
+    否则改一下颜色或文字说明就会被误判成「疆域变了」。
+    """
+    d = _topic_json(topic)
+    row = d.get(str(year)) if isinstance(d, dict) else None
+    if row is None and isinstance(d, dict):
+        row = d.get(year)
+    if not isinstance(row, dict):
+        return None
+    out = []
+    for k, v in row.items():
+        if str(k).startswith("_"):
+            continue
+        if isinstance(v, list):
+            out.append((str(k), tuple(sorted(str(x) for x in v))))
+        elif isinstance(v, dict):
+            out.append((str(k), tuple(sorted((str(a), str(b)) for a, b in v.items()
+                                             if not str(a).startswith("_")))))
+        else:
+            out.append((str(k), str(v)))
+    return tuple(sorted(out, key=lambda x: x[0]))
+
+
+def identical_runs(topic: Topic) -> list[list[int]]:
+    """把声明年份里**控制状态连续相同**的年份归成一组。
+
+    返回 [[980], [1040, 1080], [1120], ...] 这样的分组。
+    这是为了出片：1040 与 1080 画出来逐像素相同，成片里就是同一张图
+    连播两遍 —— 观众会以为卡了。真实的历史地图集遇到这种年份是合并成
+    「1040–1080 年」一帧，而不是硬放两帧。
+    """
+    ys = sorted(int(y) for y in (topic.raw.get("years") or []))
+    runs: list[list[int]] = []
+    for y in ys:
+        sig = control_state(topic, y)
+        if runs and sig is not None and control_state(topic, runs[-1][-1]) == sig:
+            runs[-1].append(y)
+        else:
+            runs.append([y])
+    return runs
+
+
 def _file_sha1(path: str) -> str:
     """JSON 文件的**语义**指纹：重排键序、改缩进、动换行都不算变化。
 
@@ -669,7 +716,8 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                     title: str | None = None, subtitle: str | None = None,
                     footer: str | None = None,
                     style_profile: dict | None = None,
-                    strength: float = 1.0) -> Image.Image:
+                    strength: float = 1.0,
+                    period: str | None = None) -> Image.Image:
     from histmap_core import Renderer, Layout, Region, Frame, Style
     year = int(str(date).split("-")[0])          # 别用 [:4]，807 是三位数
     gj = _dynasty_geometry(topic, year)
@@ -688,8 +736,11 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
     # 分朝代号（北宋/南宋）写在控制表里，标题按年显示 —— 不在这里硬编码朝代名
     era = _topic_json(topic).get("_era") or {}
     sub = f"{era.get(str(year))} · {topic.subtitle}" if era.get(str(year)) else topic.subtitle
+    # period 是「这一帧代表哪一段」。连续几年疆域没变时，成片里合并成一帧，
+    # 标题写「1040–1080 年」而不是硬放两帧一模一样的地图（观众会以为卡了）。
+    when = f"{period} 年" if period else f"{year} 年"
     fr = Frame(year=year, regions=regions,
-               title=title or f"{topic.title} · {year} 年",
+               title=title or f"{topic.title} · {when}",
                subtitle=sub if subtitle is None else subtitle)
 
     # 图例：标题写着「颜色为所属政权」却不给图例，观众没法对照。
@@ -868,12 +919,15 @@ def _topic_style_default_font() -> str:
 def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
            title: str | None = None, subtitle: str | None = None,
            footer: str | None = None, style_profile: dict | None = None,
-           strength: float = 1.0):
+           strength: float = 1.0, period: str | None = None):
     """出一张图。
 
     title / subtitle / footer 传 None 就用题材自己的默认文案（事件副标题、
     题材口径声明），传空字符串则是「明确要求留白」—— 两者不能混为一谈，
     否则用户想清掉一行标题都做不到。
+
+    period 是「这一帧代表哪一段」（如 "1040–1080"）。出片时连续几年疆域
+    没变会合并成一帧，标题就得写区间而不是单个年份。
 
     style_profile 是从参考图提取出来的风格参数。它走的是**分类色重映射**：
     逐类别换掉区域色/画布/文字，再压一层材质（纹理/颗粒/暗角）。
@@ -887,5 +941,5 @@ def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
     kw = {"title": title, "subtitle": subtitle, "footer": footer,
           "style_profile": style_profile, "strength": strength}
     if t.kind == "dynasty":
-        return _render_dynasty(t, date, theme, size, **kw)
+        return _render_dynasty(t, date, theme, size, period=period, **kw)
     return _render_boundary(t, date, theme, size, **kw)

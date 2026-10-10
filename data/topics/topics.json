@@ -220,9 +220,11 @@
       ],
       "years": [
         1947,
+        1949,
         1950,
         1960,
-        1970
+        1970,
+        1972
       ],
       "units_file": "india-pakistan-partition_units.geojson",
       "control": "india-pakistan-partition_control.json",
@@ -232,8 +234,8 @@
       "default_date": "1947-01-01",
       "default_size": "16x9",
       "merge_by": "owner",
-      "source_note": "本地图使用的是现代行政界线，而非1947年时的实际界线。",
-      "license_note": "geoBoundaries IND 为 CC BY 4.0（须署名）；geoBoundaries PAK 为 CC BY 4.0（须署名）"
+      "source_note": "本地图使用现代一级行政区界线，而非当时的实际界线；克什米尔按停火线近似，1947 年的东巴基斯坦即今孟加拉国。",
+      "license_note": "geoBoundaries IND 为 CC BY 4.0（须署名）；geoBoundaries PAK 为 CC BY 4.0（须署名）；geoBoundaries BGD 为 CC BY 4.0（须署名）"
     },
     {
       "id": "french-revolution",
