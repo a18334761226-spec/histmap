@@ -1,0 +1,29 @@
+{
+  "id": "ming-dynasty-nine-borders",
+  "title": "明代九边",
+  "subtitle": "明代北方九大军事边镇的建制与分布格局演变",
+  "kind": "dynasty",
+  "bbox": [
+    96.3,
+    33.1,
+    126.29,
+    44.54
+  ],
+  "years": [
+    1449,
+    1571,
+    1619,
+    1636,
+    1644
+  ],
+  "units": "ming-dynasty-nine-borders_province_gazetteer.json",
+  "control": "ming-dynasty-nine-borders_control.json",
+  "themes": [
+    "light"
+  ],
+  "default_date": "1619-01-01",
+  "default_size": "16x9",
+  "merge_by": "unit",
+  "source_note": "用的是现代行政界、不是当年的界线，底图基于现代中国县级行政边界，军镇辖域映射至对应现代县域",
+  "license_note": "历史属性取自《明史·兵志》，边界数据采用CC BY 4.0开源许可"
+}

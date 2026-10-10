@@ -556,8 +556,46 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
     <button class="btn" id="btnZip" title="下载全部帧的 ZIP">帧 ZIP</button>
     <button class="btn" id="btnMp4" title="下载 MP4">MP4</button>
     <button class="btn pri lg" id="btnVideo">合成视频</button>
+    <button class="btn" id="btnGen" title="数据 → 提示词 → 豆包出图">大模型生图</button>
   </div>
 </footer>
+
+<!-- ════ 大模型生图（数据 → 提示词 → 豆包）════
+     流程刻意分两步：**先把提示词给你看，你确认或改完再出图。**
+     一步到位的问题是：提示词里只要有一个敏感词，豆包就拦，
+     而用户看到的只是一句"出图失败"，完全不知道是哪个词。
+     摆出来让他自己改，比在代码里猜有效得多。 -->
+<div class="mask" id="genMask">
+  <div class="modal" style="width:min(760px,94vw)">
+    <h2>大模型生图</h2>
+    <p class="s">数据源 → 取数据 → 写提示词 → 豆包出图。先看提示词，确认了再出图。</p>
+
+    <label>你想要什么（一句话）</label>
+    <input type="text" id="genAsk" placeholder="例如：唐宪宗二年的藩镇格局图">
+    <div class="row" style="margin-top:8px">
+      <button class="btn grow" id="genPick">① 识别题材与数据源</button>
+    </div>
+    <div class="tiny dim" id="genPickOut" style="margin-top:6px"></div>
+
+    <div id="genStep2" style="display:none;margin-top:12px">
+      <label>提示词（可以改）</label>
+      <textarea id="genPrompt" rows="10" spellcheck="false"
+        style="width:100%;font-family:var(--mono);font-size:12px;line-height:1.5"></textarea>
+      <div class="tiny dim" id="genNote" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:10px">
+        <select id="genMode" style="max-width:220px">
+          <option value="img2img">给数据图重画（推荐·地理准）</option>
+          <option value="txt2img">纯文生图（地理不准）</option>
+        </select>
+        <button class="btn pri grow" id="genGo">② 确认无误，出图</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn sm gh" id="genClose">关闭</button>
+    </div>
+  </div>
+</div>
 
 <div class="scrim" id="scrim"></div>
 <div class="drawer" id="drawer">
@@ -567,6 +605,16 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
     <button class="btn sm gh" id="btnJobsClose">关闭</button>
   </div>
   <div id="jobs"></div>
+  <!-- 素材库：界面上「删掉」的题材其实整份搬到了这里，不是销毁。
+       题材是模型起草 + 逐年构建出来的，重建要一两分钟且结果不稳定，
+       所以给一条退路。 -->
+  <div class="dh" style="margin-top:14px">
+    <b>素材库</b><span class="tiny dim">删掉的题材都在这儿，可以装回来</span>
+    <button class="btn sm gh" id="btnLibAll" style="margin-left:auto"
+      title="把素材库里的题材全部装回来">全部装回</button>
+    <button class="btn sm gh" id="btnLibRefresh">刷新</button>
+  </div>
+  <div id="lib"></div>
 </div>
 
 <div class="mask" id="mask">
@@ -735,40 +783,38 @@ async function boot(){
 function tabs(){
   // 题材页签后面**常驻一个「+」** —— 想找别的题材的人会往这排看，
   // 而不是去看顶栏角落（早先只有顶栏那个小按钮，等于藏起来了）。
-  // 每个页签上一个 × ：自己建的题材要能删掉，否则试几次就积一排
-  // （实测一排里躺着「复现用题材2」「验证题材」这种半成品，没法收拾）。
-  // 内置题材不给 ×，删了仓库就少一个；服务端也会再拒一次。
-  const BUILTIN = ['mingqing','ww1-europe','ww2-europe','tang','song',
-    'us-civil-war','deu-unification','india-pakistan-partition','french-revolution'];
+  // 每个页签上一个 ×：**内置题材也能关**。我一度把它们排除在外，理由是
+  // "删了仓库里就少一个"，但一排内置题材占着、自己想看的反而不见，
+  // 这个理由站不住。而且这里是**归档不是删除** —— 整份进
+  // 「作品库 → 素材库」，随时装回来。
   $('#tabs').innerHTML = SCENES.map(s => {
     const off = s.ready === false;
-    const canDel = !BUILTIN.includes(s.id);
     return `<button class="tab${s.id === st.scene ? ' on' : ''}${off ? ' off' : ''}"
        data-id="${esc(s.id)}" ${off ? `title="缺数据：${esc(s.missing)}"` : ''}>
-       <i></i>${esc(s.title)}<em>${off ? '缺数据' : (s.dates||[]).length}</em>${
-       canDel ? `<span class="x" data-del="${esc(s.id)}"
-         title="删除这个题材（连同它的控制表和几何文件）">×</span>` : ''}</button>`;
+       <i></i>${esc(s.title)}<em>${off ? '缺数据' : (s.dates||[]).length}</em><span class="x"
+         data-del="${esc(s.id)}" title="移入素材库（可装回）">×</span></button>`;
   }).join('') + `<button class="tab add" id="tabAdd" title="这个列表里没有你要的？让系统自己建一个">
        ＋ 别的题材</button>`;
   $$('#tabs .tab .x').forEach(x => x.onclick = async ev => {
     ev.stopPropagation();          // 别让它顺带切到这个题材
     const id = x.dataset.del;
     const s = SCENES.find(v => v.id === id);
-    if (!confirm(`删除题材「${s ? s.title : id}」？\n\n` +
-                 `会一起删掉它的控制表和已构建的几何文件，不能撤销。`)) return;
+    if (!confirm(`把题材「${s ? s.title : id}」移入素材库？\n\n` +
+                 `它的控制表和已构建的几何会整份搬到「作品库 → 素材库」，\n` +
+                 `随时可以装回来，不会丢。`)) return;
     try {
       const r = await api('/api/topic/delete', {method:'POST',
         body: JSON.stringify({id})});
       const j = await r.json();
-      if (!r.ok) throw new Error(errText(j.detail, '删除失败'));
-      // 删的是当前这个就换到第一个还能用的
+      if (!r.ok) throw new Error(errText(j.detail, '移入素材库失败'));
+      // 移走的是当前这个就换到第一个还能用的
       if (st.scene === id) st.scene = (SCENES.find(v => v.id !== id) || {}).id;
       SCENES = ((await (await fetch('/api/scenes')).json()).scenes) || [];
       if (!SCENES.some(v => v.id === st.scene)) st.scene = (SCENES[0]||{}).id;
       const cur = scene();
       if (cur){ st.theme = (cur.themes||['dark'])[0]; st.size = cur.default_size || '16x9'; }
       tabs(); syncParams(); fillRange(); rebuild(); renderOne();
-      toast(`已删除「${s ? s.title : id}」（清理 ${(j.removed||[]).length} 个文件）`);
+      toast(`已把「${s ? s.title : id}」移入素材库（${(j.moved||[]).length} 个文件）`);
     } catch(e){ toast(e.message); }
   });
   $$('#tabs .tab[data-id]').forEach(b => b.onclick = () => {
@@ -811,8 +857,21 @@ function syncParams(){
 function styles(){
   $('#styles').innerHTML = STYLES.map(p =>
     `<button class="sc${p.id===st.style?' on':''}" data-id="${esc(p.id)}">
-       ${p.preview ? `<img src="${esc(p.preview)}" alt="" loading="lazy">` : `<span class="ph"></span>`}
+       ${p.preview ? `<img src="${esc(p.preview)}" alt="" loading="lazy"
+          data-tries="0">` : `<span class="ph"></span>`}
        <span><b>${esc(p.label)}</b><span>${esc(p.desc||'')}</span></span></button>`).join('');
+  // 小样是服务端**现算**的（每个要真渲一张图）。容器刚起来时还没算完，
+  // 请求会 404 → 浏览器显示破图。这里失败就隔几秒重试几次，
+  // 别让"还没算好"看起来像"坏了"。服务端现在也会在启动时预生成，双保险。
+  $$('#styles img').forEach(im => {
+    im.onerror = () => {
+      const n = Number(im.dataset.tries || 0);
+      if (n >= 6) return;
+      im.dataset.tries = n + 1;
+      setTimeout(() => { im.src = im.src.split('?')[0] + '?r=' + Date.now(); },
+                 1200 * (n + 1));
+    };
+  });
   $$('#styles .sc').forEach(b => b.onclick = () => {
     st.style = b.dataset.id; styles(); if (frame()) renderOne(true); });
 }
@@ -1202,7 +1261,19 @@ function cardsIn(){
            outro: g($('#outTitle').value, $('#outSub').value, $('#outSec').value) };
 }
 async function submit(mode){
-  if (!cart.length){ toast('分镜是空的，先填一批年份'); return; }
+  // **分镜为空时自动补齐，而不是弹一句"分镜是空的"。**
+  // 原来点「出全部图」要求先点「用这个区间重建分镜」—— 两个不明显的步骤，
+  // 漏掉第一步就只会看到一句提示，用户以为"十二张图没出"（实测就是）。
+  // 「出全部图」的语义本来就该是"把这个题材所有年份都出"，所以这里直接补。
+  if (!cart.length){
+    const ds = (scene()||{}).dates || [];
+    if (!ds.length){ toast('这个题材没有可出的年份'); return; }
+    st.range = [0, ds.length - 1];
+    snap();
+    cart = ds.map(d => ({date:d}));
+    reset(); drawSb(); drawFilm(); updateTp(); txPanel();
+    toast(`分镜原来是空的，已自动填入这个题材的全部 ${cart.length} 个年份`);
+  }
   readTx();
   const c = cardsIn();
   const body = {
@@ -1625,7 +1696,7 @@ $('#tpNext').onclick = () => selectFrame(Math.min(cart.length-1, cur+1));
 $('#tpLast').onclick = () => selectFrame(cart.length-1);
 $('#tpPlay').onclick = () => playing ? stopPlay() : play();
 
-function openJobs(){ $('#drawer').classList.add('on'); $('#scrim').classList.add('on'); loadJobs(); }
+function openJobs(){ $('#drawer').classList.add('on'); $('#scrim').classList.add('on'); loadJobs(); loadLib(); }
 function closeJobs(){ $('#drawer').classList.remove('on'); $('#scrim').classList.remove('on'); }
 
 /* ── 新建题材：一句话 → 草案 → 建出来 ─────────────────────────────── */
@@ -1671,9 +1742,16 @@ $('#nwGo').onclick = async () => {
     $('#nwStat').textContent =
       `草案就绪（${j.model || cfg.chat || '默认模型'} · ${j.used || ''}） —— 看一眼再建`;
   } catch(e){
-    $('#nwStat').textContent = '起草没成功。去「设置 → 测试连接」能定位是 Key、'
-      + '接口地址还是模型的问题。';
-    toast(e.message);
+    // **把真实原因说出来。** 原来无论什么错都只写一句
+    // 「去设置→测试连接能定位是 Key、接口地址还是模型的问题」——
+    // 可请求根本没到服务端（比如容器正在重启、被掐断）时，这句话把人
+    // 引到设置里白折腾。网络层的错和服务端返回的错要分开说。
+    const msg = String(e && e.message || e);
+    const netish = /Failed to fetch|NetworkError|aborted|中断|fetch/i.test(msg);
+    $('#nwStat').textContent = netish
+      ? '请求没能发到服务端（它可能刚重启）。稍等几秒再点一次。'
+      : '起草没成功：' + msg.slice(0, 120);
+    toast(netish ? '服务端没响应 —— 稍等几秒重试' : msg);
   } finally { clearInterval(_tick); $('#nwGo').disabled = false; }
 };
 
@@ -1718,6 +1796,148 @@ $('#btnJobs').onclick = openJobs;
 $('#scrim').onclick = closeJobs;
 $('#btnJobsClose').onclick = closeJobs;
 $('#btnJobsRefresh').onclick = () => { loadJobs(); jobCnt(); };
+$('#btnLibRefresh').onclick = loadLib;
+$('#btnLibAll').onclick = async () => {
+  if (!confirm('把素材库里的题材全部装回来？')) return;
+  $('#btnLibAll').disabled = true;
+  try {
+    const r = await api('/api/topic/restore', {method:'POST',
+      body: JSON.stringify({id: '*'})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(errText(j.detail, '装回失败'));
+    SCENES = ((await (await fetch('/api/scenes')).json()).scenes) || [];
+    tabs(); loadLib(); renderOne();
+    toast(`已装回 ${j.count} 个题材`
+          + ((j.failed||[]).length ? `；${j.failed.length} 个失败` : ''));
+  } catch(e){ toast(e.message); }
+  finally { $('#btnLibAll').disabled = false; }
+};
+
+/* 素材库：列出被移走的题材，一键装回来。 */
+async function loadLib(){
+  try {
+    const j = await (await fetch('/api/topic/library')).json();
+    const items = j.items || [];
+    $('#lib').innerHTML = items.length
+      ? items.map(x => `<div class="job">
+          <div class="jrow"><b>${esc(x.title)}</b>
+            <span class="tiny dim">${esc(x.id)} · ${(x.years||[]).length} 年 ·
+              ${x.files||0} 个文件 · ${esc(x.at||'')}</span></div>
+          <div class="jrow"><button class="btn sm" data-restore="${esc(x.id)}">
+            装回来</button></div></div>`).join('')
+      : '<div class="tiny dim" style="padding:10px">素材库是空的。在题材页签上点 × 会移到这里。</div>';
+    $$('#lib [data-restore]').forEach(b => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const r = await api('/api/topic/restore', {method:'POST',
+          body: JSON.stringify({id: b.dataset.restore})});
+        const j2 = await r.json();
+        if (!r.ok) throw new Error(errText(j2.detail, '装回失败'));
+        SCENES = ((await (await fetch('/api/scenes')).json()).scenes) || [];
+        tabs(); loadLib();
+        toast(`已装回题材「${j2.id}」（${(j2.restored||[]).length} 个文件）`);
+      } catch(e){ toast(e.message); b.disabled = false; }
+    });
+  } catch(e){ $('#lib').innerHTML = `<div class="tiny dim">读取失败：${esc(e.message)}</div>`; }
+}
+
+const _openJobs = openJobs;
+
+/* ════ 大模型生图：输入 → 出提示词 → 用户确认 → 出图 ════ */
+$('#btnGen').onclick = () => {
+  const s = scene();
+  if (s && !$('#genAsk').value.trim()) $('#genAsk').value = s.title || '';
+  $('#genMask').classList.add('on');
+  $('#genAsk').focus();
+};
+$('#genClose').onclick = () => $('#genMask').classList.remove('on');
+$('#genMask').onclick = e => { if (e.target.id === 'genMask') $('#genMask').classList.remove('on'); };
+
+/* ① 先用意图识别定题材和数据源 —— 这一步不叫模型，毫秒级。
+     识别不出来也照样往下走：让用户直接看到"没认出题材"这个事实，
+     比默默失败强。 */
+$('#genPick').onclick = async () => {
+  const ask = $('#genAsk').value.trim();
+  if (!ask){ toast('先写一句你想要什么'); return; }
+  $('#genPick').disabled = true;
+  $('#genPickOut').textContent = '识别中…';
+  try {
+    const r = await api('/api/intent', {method:'POST', body: JSON.stringify({ask})});
+    const j = await r.json();
+    const t = j.topic || {}, s = j.source || {};
+    if (t.hit){
+      st.scene = t.scene; st.date = t.date;
+      $('#genPickOut').innerHTML =
+        `✓ 认出来了：<b>${esc(t.scene)}</b> · ${esc(t.date)}<br>` +
+        `<span class="dim">依据：${esc(t.how||'')}</span>`;
+      await loadPrompt();
+    } else {
+      $('#genPickOut').innerHTML =
+        `✗ 现有题材里没有对应的：${esc(t.reason||'')}<br>` +
+        `<span class="dim">数据源判断：${esc(s.source ? s.source+' —— '+s.why : '定不了，需要叫模型起草新题材')}</span>`;
+    }
+  } catch(e){ $('#genPickOut').textContent = '识别失败：' + e.message; }
+  finally { $('#genPick').disabled = false; }
+};
+
+/* ② 取数据 → 生成提示词（也不叫模型）。摆出来给用户看、改。 */
+async function loadPrompt(){
+  const sid = st.scene;
+  if (!sid){ toast('先识别出题材'); return; }
+  const s = scene();
+  const date = st.date || (s && (s.dates||[])[0]) || '';
+  $('#genPrompt').value = '正在根据数据写提示词…';
+  try {
+    const r = await api('/api/gen/prompt', {method:'POST',
+      body: JSON.stringify({scene: sid, date})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(errText(j.detail, '写提示词失败'));
+    $('#genPrompt').value = j.prompt || '';
+    const bits = [];
+    if ((j.era||{}).cn) bits.push(`时代背景：${j.era.cn} ${j.era.when||''}`);
+    bits.push(`实体 ${ (j.regions||[]).length } 个：` +
+              (j.regions||[]).map(x => x.name).join('、'));
+    if ((j.sanitized||[]).length) bits.push('已过滤敏感词：' + j.sanitized.join('、'));
+    if ((j.dropped_unrenderable||[]).length)
+      bits.push(`跳过 ${j.dropped_unrenderable.length} 个本字体画不出的名字`);
+    $('#genNote').innerHTML = bits.map(esc).join('<br>');
+    $('#genStep2').style.display = 'block';
+  } catch(e){
+    $('#genPrompt').value = '';
+    $('#genNote').textContent = e.message;
+    $('#genStep2').style.display = 'block';
+  }
+}
+
+/* ③ 用户改完点确认，才真的花钱出图。**用界面里那份提示词**，
+      不重新生成 —— 否则用户改的字等于白改。 */
+$('#genGo').onclick = async () => {
+  const sid = st.scene;
+  if (!sid){ toast('先识别出题材'); return; }
+  const s = scene();
+  const date = st.date || (s && (s.dates||[])[0]) || '';
+  const mode = $('#genMode').value;
+  $('#genGo').disabled = true;
+  setStat('豆包出图中…（30–60 秒）');
+  try {
+    const r = await api('/api/gen', {method:'POST', body: JSON.stringify({
+      scene: sid, date, mode, prompt: $('#genPrompt').value.trim()})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(errText(j.detail, '出图失败'));
+    $('#genMask').classList.remove('on');
+    $('#view').innerHTML = `<div class="wrap">
+      <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
+        <img src="${esc(j.image)}?t=${Date.now()}"></div>
+      <div class="cap">豆包 ${esc(j.model)} · ${esc(j.mode)} · ${j.seconds}s ·
+        ${(j.entities||[]).length} 个实体</div></div>`;
+    setStat('大模型出图完成');
+  } catch(e){
+    $('#genNote').innerHTML = `<b>出图失败：</b>${esc(e.message)}<br>` +
+      `<span class="dim">如果提示词里有"割据/军阀/分裂/内战"这类词，豆包会拦；
+       改掉再试。也可以换 seedream-4.0 以外的模型。</span>`;
+    toast(e.message);
+  } finally { $('#genGo').disabled = false; }
+};
 
 document.addEventListener('keydown', e => {
   // 焦点在控件上时不抢键：空格会既激活按钮又触发预演

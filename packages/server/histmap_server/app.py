@@ -129,11 +129,14 @@ MODELS = {
         # 「大模型生图」（/api/render/model）和「生成纸纹」。
         # 豆包这几条是 2026-10 从方舟 /v1/models 实际拉的 ——
         # 原来写的 `doubao-seedream-3-0-t2i-250415` 已不在清单里，调了就是 404。
-        {"id": "doubao-seedream-5-0-pro-260628", "label": "豆包 Seedream 5.0 Pro",
+        # **顺序就是默认顺序**：4.0 放第一个 —— 实测这个账号只开通了它，
+        # 5.0-pro 未开通（404 ModelNotOpen）、5.0-flash 被用量限额暂停（429）。
+        # 把未开通的排在前面，用户一选就报错。
+        {"id": "doubao-seedream-4-0-20260415", "label": "豆包 Seedream 4.0（可用）",
          "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
-        {"id": "doubao-seedream-5-0-flash-260915", "label": "豆包 Seedream 5.0 Flash（快）",
+        {"id": "doubao-seedream-5-0-pro-260628", "label": "豆包 Seedream 5.0 Pro（需先在方舟开通）",
          "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
-        {"id": "doubao-seedream-4-0-20260415", "label": "豆包 Seedream 4.0",
+        {"id": "doubao-seedream-5-0-flash-260915", "label": "豆包 Seedream 5.0 Flash（需先解除限额）",
          "base": "https://ark.cn-beijing.volces.com/api/v3", "svc": "火山方舟"},
         {"id": "Qwen/Qwen-Image-Edit-2509", "label": "Qwen-Image-Edit-2509",
          "base": "https://api.siliconflow.cn/v1"},
@@ -232,6 +235,25 @@ def api_models():
     return MODELS
 
 
+def allow_server_key(request) -> tuple[bool, str]:
+    """能不能用服务端 `.env` 里的 Key。**全项目只此一处判断。**
+
+    原来这段逻辑在 5 个接口里各写了一遍，而且只有 2 处带上
+    `HISTMAP_ALLOW_SERVER_KEY` —— 于是同一个应用出现「起草能用 .env 的 key、
+    生成纸纹却报要 Key」这种自相矛盾的行为。判断必须收敛到一处。
+
+    规则：
+      · 本机访问（127.0.0.1 / ::1 / localhost）→ 允许，开箱可用
+      · 显式设了 HISTMAP_ALLOW_SERVER_KEY=1 → 允许
+        （**本地跑容器时必须开**：容器里看到的来源是 Docker 网关
+          172.17.0.1，不是 127.0.0.1，于是本机 .env 明明配了 key 也会 401）
+      · 公网访客 → 不允许，必须自带 Key，别烧站长的额度
+    """
+    host = (request.client.host if request.client else "") or ""
+    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    return (is_local or os.environ.get("HISTMAP_ALLOW_SERVER_KEY") == "1"), host
+
+
 def _model_size(size: str) -> str:
     """把画布尺寸名换成图像模型的 size 参数（WxH）。
 
@@ -316,10 +338,9 @@ async def style_extract(request: Request, file: UploadFile = File(...),
            "ref_path": tmp, "style_desc": "", "image_prompt": "",
            "tags": [], "is_light": None, "vlm": False}
     if vlm:
-        host = (request.client.host if request.client else "") or ""
-        is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+        allow_env, host = allow_server_key(request)
         key = (x_api_key or "").strip()
-        if not key and is_local:
+        if not key and allow_env:
             try:
                 import new_topic as NT
                 key = (os.environ.get("SILICONFLOW_API_KEY")
@@ -423,12 +444,11 @@ def api_render_model(req: ModelImageReq, request: Request,
     if not t:
         raise HTTPException(404, "没有这个题材")
 
-    host = (request.client.host if request.client else "") or ""
-    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    allow_env, host = allow_server_key(request)
     key = (x_api_key or "").strip()
     label = "你填的 Key"
     srv_base = ""
-    if not key and is_local:
+    if not key and allow_env:
         try:
             from histmap_agent.llm import server_default
             d = server_default()
@@ -659,11 +679,13 @@ def api_style_texture(req: StyleTextureReq, request: Request,
     if not t:
         raise HTTPException(404, "没有这个题材")
 
-    host = (request.client.host if request.client else "") or ""
-    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    # 能不能用服务端 .env 的 Key —— 走 allow_server_key()，全项目一处判断。
+    # （原来这里自己写了一遍 is_local，漏了 HISTMAP_ALLOW_SERVER_KEY，
+    # 于是起草能用 .env 的 key、生成纸纹却报「这一步要图像模型的 Key」。）
+    allow_env, host = allow_server_key(request)
     key = (x_api_key or "").strip()
     srv_base = ""
-    if not key and is_local:
+    if not key and allow_env:
         # **不要只认 SILICONFLOW_API_KEY。** 这里原来就是只认它，于是
         # 「.env 里填了火山方舟的 key」时，这一步会拿**硅基的 key 去打火山**，
         # 得到 `401 AuthenticationError: The API key format is incorrect` ——
@@ -1551,9 +1573,43 @@ class ChatReq(BaseModel):
 def api_chat(req: ChatReq, x_api_key: str | None = Header(None, alias="X-Api-Key"),
              x_model: str | None = Header(None, alias="X-Model"),
              x_base_url: str | None = Header(None, alias="X-Base-Url")):
-    """对话改参数。需要用户提供 LLM 的 key（前端填，服务端不落盘）。"""
+    """对话改参数。**先意图识别，再考虑叫模型。**
+
+    顺序很重要：系统里已有 13 个题材，「唐宪宗二年的藩镇图」「二战 1943」
+    这类问法**查表就能答**（毫秒级、零成本、年份还更准 —— 年号换算走确定表，
+    模型反而答错过 805）。只有真正认不出来的（比如"中原大战"这种还没建的题材）
+    才值得花一次模型调用。
+    """
+    # ── 先走意图识别（不需要 key） ──
+    last = ""
+    for m in reversed(req.messages or []):
+        if (m or {}).get("role") == "user":
+            last = str(m.get("content") or "")
+            break
+    if last:
+        try:
+            import sys as _sys
+            if os.path.join(ROOT, "src") not in _sys.path:
+                _sys.path.insert(0, os.path.join(ROOT, "src"))
+            import intent as _intent
+            hit = _intent.recognize(last, topics.list_topics())
+        except Exception as e:
+            hit = {"hit": False, "err": f"{type(e).__name__}: {e}"}
+        if hit.get("hit"):
+            st = dict(req.state or {})
+            st["scene"] = hit["scene"]
+            st["date"] = hit["date"]
+            return {"state": st, "reply": f"已切到「{hit['scene']}」{hit['date'][:4]} 年。",
+                    "via": "intent", "how": hit.get("how"),
+                    "model": None, "seconds": 0.0}
+        # 没命中：记下原因，交给模型兜底（下面还是要 key）
+        req_state_note = hit.get("reason") or ""
+
     if not x_api_key:
-        raise HTTPException(401, "还没填 API Key —— 右上角设置里填一个（如硅基流动的 sk-…）")
+        raise HTTPException(401, (
+            "这句话我没能对上现有题材（" + (req_state_note or "认不出题材") +
+            "），需要叫模型来起草一个新题材 —— 请在右上角「设置」里填一个 Key。"
+            "（出图不需要 Key；只有「让模型理解新说法」才需要。）"))
 
     
     # 场景清单：把**真能渲染的日期**给模型，否则它会自己编。
@@ -1723,12 +1779,11 @@ def api_key_test(request: Request,
     import urllib.error
     import urllib.request
 
-    host = (request.client.host if request.client else "") or ""
-    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
+    allow_env, host = allow_server_key(request)
     key = (x_api_key or "").strip()
     src = "你填的 Key"
     if not key:
-        if not is_local:
+        if not allow_env:
             return {"ok": False, "step": "key",
                     "detail": "公网访问必须自带 Key（服务端不会用站长的额度替你调模型）"}
         try:
@@ -1813,9 +1868,7 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
     #   · 部署到公网 → 访客来自别的 IP → 必须带自己的 key，
     #     否则每个访客都在烧站长的额度
     # 想对公网也开放就显式设 HISTMAP_ALLOW_SERVER_KEY=1。
-    host = (request.client.host if request.client else "") or ""
-    is_local = host in ("127.0.0.1", "::1", "localhost", "testclient")
-    allow_env = is_local or os.environ.get("HISTMAP_ALLOW_SERVER_KEY") == "1"
+    allow_env, host = allow_server_key(request)
 
     # 界面上选的模型和接口地址必须真的生效。早先这两个值只从请求体里读，
     # 而前端是放在 X-Model / X-Base-Url 头里发的 —— 于是「设置」里
@@ -1867,6 +1920,18 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
 
     used = "你填的 Key" if client_key else "本机 .env 里的 Key"
     note = ""
+    # **先做意图识别，把"该用哪个数据源"的结论一并回报给用户。**
+    # 这一步不花模型调用，但能让用户看见系统的判断依据；
+    # 大模型起草时也把这段结论喂进去，省得它又从零猜数据源。
+    src_choice = {}
+    try:
+        import sys as _sys
+        if os.path.join(ROOT, "src") not in _sys.path:
+            _sys.path.insert(0, os.path.join(ROOT, "src"))
+        import intent as _intent
+        src_choice = _intent.choose_source(req.ask)
+    except Exception:
+        src_choice = {}
     # **必须把 server_key 显式传进去。**
     # 踩过的坑：这里原来写 `_run(client_key, base)`，没带 key 时 client_key 是空串，
     # 而 new_topic.draft 见到空 key 会**自己去读 .env 的 SILICONFLOW_API_KEY**
@@ -1914,6 +1979,20 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
         raise HTTPException(500, f"起草失败：{type(e).__name__}: {e}")
     # 顺带把「这份草案能不能真的建出来」预判一下，省得用户点了才发现对不上
     warn = []
+    # **年份去重。** 实测模型给过 [1929, 1930, 1930, 1931] —— 草案里两个 1930，
+    # 界面上就会出现两个一模一样的年份，用户点哪个都一样。
+    # 在草案这一层就清掉，用户看到的和最终建出来的才一致。
+    if isinstance(spec.get("years"), list):
+        seen, uniq = set(), []
+        for y in spec["years"]:
+            k = str(y)[:4]
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(y)
+        if len(uniq) != len(spec["years"]):
+            warn.append(f"草案里的年份有重复，已去重为 {uniq}")
+            spec["years"] = uniq
     if (spec.get("kind") or "partition") == "partition":
         geo = spec.get("geometry") or {}
         srcs = geo.get("sources") or ([geo] if geo.get("iso") else [])
@@ -1927,17 +2006,277 @@ def api_topic_draft(req: TopicDraftReq, request: Request,
             # 回报**实际用的**接口地址，不要兜底成硅基 ——
             # 用户看这一行来判断"到底走了哪一家"，写错等于骗人。
             "base": base or srv_base,
-            "used": used}
+            "used": used,
+            # 意图识别给出的数据源判断（不花模型调用）。大模型有可能选了
+            # 别的源，两个都回报，不一致时用户能看出来。
+            "source_choice": src_choice}
+
+
+class GenReq(BaseModel):
+    """**数据 → 提示词 → 模型出图。**不做代码渲染。
+
+    这是用户要的链路，只有四步：
+        数据源 → 数据 → 写好提示词 → 豆包出图
+    代码只负责把数据整理成一段模型看得懂的描述（谁、在哪、多大、
+    什么年代），图完全由图像模型画。
+    """
+    scene: str
+    date: str = ""
+    size: str = "16x9"
+    # **默认 img2img。** 实测对比（同一份数据）：
+    #   txt2img（只给文字）—— 模型按自己的先验瞎画，地理完全对不上，
+    #     提示词里写"唐在中部占48%"这种话对扩散模型没有任何约束力；
+    #   img2img（给数据图 + 提示词）—— 结构 NCC 0.92，各区域位置正确，
+    #     质感由模型给。**文字管不了地理，地理必须给图。**
+    mode: str = "img2img"      # img2img（推荐）| txt2img（纯文生图，地理不准）
+    img_model: str = ""
+    img_base: str = ""
+    strength: float = 0.8
+    steps: int = 30
+    seed: int | None = None
+    extra_prompt: str = ""     # 用户想追加的风格要求
+    # **用户确认/改过的提示词。** 界面的流程是
+    # 「输入一句话 → 先出提示词给用户看 → 用户改完点确认 → 才出图」，
+    # 所以这一步必须能用界面里那份文本，而不是重新生成一遍 ——
+    # 否则用户改的字等于白改。
+    prompt: str = ""
+
+
+@app.post("/api/gen")
+def api_gen(req: GenReq, request: Request,
+            x_api_key: str | None = Header(None, alias="X-Api-Key")):
+    """数据 → 提示词 → 豆包 → 图。"""
+    import sys as _sys
+    import time as _t
+    _src = os.path.join(ROOT, "src")
+    if _src not in _sys.path:
+        _sys.path.insert(0, _src)
+    import data_to_prompt as D
+    import stylize as Z
+
+    t = topics.get(req.scene)
+    if not t:
+        raise HTTPException(404, "没有这个题材")
+    date = req.date or (t.dates() or [t.default_date()])[0]
+
+    # ① 数据 → 提示词（不花模型调用）
+    try:
+        info = D.describe(t, int(str(date).split("-")[0]))
+    except Exception as e:
+        raise HTTPException(500, f"整理数据失败：{type(e).__name__}: {e}")
+    if info.get("error"):
+        raise HTTPException(400, info["error"])
+    if not info["regions"]:
+        raise HTTPException(400, "这个题材在这一年没有可画的政治实体")
+
+    # ② Key / 接口地址
+    allow_env, _host = allow_server_key(request)
+    key = (x_api_key or "").strip()
+    srv_base = ""
+    if not key and allow_env:
+        try:
+            from histmap_agent.llm import server_default
+            d = server_default()
+            key, srv_base = d.key, d.base
+        except SystemExit as e:
+            raise HTTPException(401, str(e))
+    if not key:
+        raise HTTPException(401, "生图要一个图像模型的 Key（设置里填）")
+    base = (req.img_base or "").strip() or srv_base
+    model = (req.img_model or "").strip()
+    if not model:
+        # **优先用 .env 里配的那个图像模型。**
+        # 原来是从 MODELS 里取「第一个火山的」—— 而清单里第一个是
+        # seedream-5-0-pro，用户账号**未开通**，于是每次都 404 ModelNotOpen。
+        # .env 里的 HISTMAP_IMAGE_MODEL 是实际验证过能用的那个，优先它。
+        try:
+            from histmap_agent.llm import _env_file
+            model = (_env_file().get("HISTMAP_IMAGE_MODEL") or "").strip()
+        except Exception:
+            model = ""
+    if not model and base:
+        cand = [m for m in (MODELS.get("image_edit") or [])
+                if (m.get("base") or "").rstrip("/") == base.rstrip("/")]
+        model = cand[0]["id"] if cand else ""
+    if not base or not model:
+        raise HTTPException(400, "要指定图像模型的接口地址和模型名")
+
+    prompt = (req.prompt or "").strip() or info["prompt"]
+    if req.extra_prompt.strip():
+        prompt += " " + req.extra_prompt.strip()
+    # 用户改过的文本也要过一遍敏感词 —— 他可能把「割据」加回去，
+    # 那样还是会被平台拦，拦了他也看不懂原因。这里静默替换并如实回报。
+    import data_to_prompt as _D
+    prompt, _hits = _D.sanitize(prompt)
+
+    stamp = int(_t.time() * 1000)
+    out = os.path.join(MEDIA, f"gen_{req.scene}_{stamp}.png")
+    prov = Z.SiliconFlow(key, model=model, base=base)
+    try:
+        if req.mode == "img2img":
+            # 给模型一张**没有文字的纯数据图**当参考。
+            # 关键：**不能带标题**。原来的输入图上有标题「黄巢起义控制区变迁」，
+            # 而「起义」这类词在图片里**照样触发内容审核**（用户提醒的
+            # 「割据是敏感词」同一类问题）。给模型的本来也不该是成品图，
+            # 而是"哪里是什么"的纯净版：色块 + 细边界，其余全空。
+            import topics as _T
+            base_img = _T.render(req.scene, date, "light",
+                                 req.size or "16x9",
+                                 title="", subtitle="", footer="")
+            bp = os.path.join(MEDIA, f"genbase_{req.scene}_{stamp}.png")
+            base_img.save(bp)
+            url, secs, seed = prov.run(bp, prompt, steps=req.steps,
+                                       seed=req.seed, strength=req.strength,
+                                       size=_model_size(req.size or "16x9"))
+        else:
+            url, secs, seed = prov.text2img(
+                prompt, size="1024x1024", steps=req.steps, seed=req.seed,
+                negative_prompt="extra countries, invented borders, "
+                                "modern flags, watermark, signature, "
+                                "blurry, low quality")
+        Z._download(url, out)
+    except Exception as e:
+        raise HTTPException(502, f"出图失败：{type(e).__name__}: {str(e)[:300]}")
+
+    return {"image": f"/media/api/{os.path.basename(out)}",
+            "scene": req.scene, "date": date, "year": info["year"],
+            "model": model, "api_base": base, "mode": req.mode,
+            "seconds": round(secs, 1),
+            "entities": [r["name"] for r in info["regions"]],
+            "summary": info["summary"],
+            "prompt": prompt,
+            "sanitized": (info.get("sanitized") or []) + _hits,
+            "dropped_unrenderable": info.get("dropped_unrenderable") or []}
+
+
+@app.post("/api/gen/prompt")
+def api_gen_prompt(req: GenReq):
+    """只看"数据整理成的提示词"，不出图 —— 方便先检查提示词再花钱。"""
+    import sys as _sys
+    _src = os.path.join(ROOT, "src")
+    if _src not in _sys.path:
+        _sys.path.insert(0, _src)
+    import data_to_prompt as D
+    t = topics.get(req.scene)
+    if not t:
+        raise HTTPException(404, "没有这个题材")
+    date = req.date or (t.dates() or [t.default_date()])[0]
+    try:
+        return D.describe(t, int(str(date).split("-")[0]))
+    except Exception as e:
+        raise HTTPException(500, f"整理数据失败：{type(e).__name__}: {e}")
 
 
 class TopicDeleteReq(BaseModel):
     id: str
 
 
+class IntentReq(BaseModel):
+    ask: str
+
+
+@app.post("/api/intent")
+def api_intent(req: IntentReq):
+    """**意图识别：只查表，不叫模型。**毫秒级、零成本。
+
+    两件事：
+      1. recognize()    —— 这句话是不是在问**系统里已有的题材**？
+                           命中就直接能出图，不必花一次模型调用
+                           （实测「唐宪宗二年的藩镇图」走模型要 191 秒）
+      2. choose_source() —— 不是已有题材时，**该用哪个几何数据源**？
+                           atlaspi（真实历史边界，任意年份）/ geoboundaries
+                           （单元级，现代行政区）/ cshapes（1886–2019 国家边界）
+                           都定不了才 need_llm=True，交给大模型兜底。
+    """
+    import sys as _sys
+    _src = os.path.join(ROOT, "src")
+    if _src not in _sys.path:
+        _sys.path.insert(0, _src)
+    import intent as _intent
+    ask = (req.ask or "").strip()
+    scenes = topics.list_topics()
+    rec = _intent.recognize(ask, scenes)
+    src = _intent.choose_source(ask)
+    return {"ask": ask, "topic": rec, "source": src,
+            "verdict": ("直接出图" if rec.get("hit")
+                        else ("用 " + src["source"] if src.get("source")
+                              else "交给大模型兜底"))}
+
+
+@app.get("/api/sources")
+def api_sources():
+    """系统里能用的几何数据源一览（给界面显示，也方便排查）。"""
+    return {"sources": [
+        {"id": "atlaspi", "title": "AtlasPI · 真实历史政体",
+         "level": "政体级（帝国/王国/汗国）",
+         "coverage": "公元前 4500 – 2024，按年查询",
+         "license": "Apache-2.0 · 可商用",
+         "cons": "细到州/县不行", "kind": "atlaspi"},
+        {"id": "geoboundaries", "title": "geoBoundaries · 现代行政区",
+         "level": "单元级（州/县/藩镇/军镇）",
+         "coverage": "当代（按治所归并反推历史疆域）",
+         "license": "PDDL · 公有领域",
+         "cons": "底图是现代行政界，**必须声明不是当年的界线**",
+         "kind": "gazetteer"},
+        {"id": "cshapes", "title": "CShapes 2.0 · 历史国家边界",
+         "level": "主权国家",
+         "coverage": "1886 – 2019",
+         "license": "学术许可 · **禁商用**",
+         "cons": "商用场景要改用 AtlasPI", "kind": "boundary"},
+    ]}
+
+
+@app.get("/api/topic/library")
+def api_topic_library():
+    """素材库：从界面上删掉的题材都在这儿，可以装回来。
+
+    为什么会有这个东西：题材是「模型起草 + 逐年构建」出来的，重建一次要
+    一两分钟，而且模型每次写的年份都不一样 —— 删掉就真的没了。所以界面上的
+    删除是**归档**：整份搬进 data/library/<id>/。
+    """
+    import new_topic as NT
+    return {"items": NT.library_items()}
+
+
+@app.post("/api/topic/restore")
+def api_topic_restore(req: TopicDeleteReq):
+    """把素材库里的题材装回来。id 传 "*" 就是全部装回。
+
+    **为什么需要"全部装回"**：界面上的 × 是归档，但归档内置题材会真的改动
+    仓库里的 data/topics/topics.json —— 推上去仓库就少了题材。用户连点几下
+    把演示题材都收起来之后，需要一条路一键恢复原状，而不是逐个点。
+    """
+    import new_topic as NT
+    tid = (req.id or "").strip()
+    if not tid:
+        raise HTTPException(400, "没给题材 id")
+    if tid == "*":
+        done, failed = [], []
+        for it in list(NT.library_items()):
+            try:
+                NT.restore(it["id"], quiet=True)
+                done.append(it["id"])
+            except Exception as e:
+                failed.append(f"{it['id']}: {e}")
+        _reload_topics()
+        return {"restored_all": done, "failed": failed, "count": len(done)}
+    try:
+        rep = NT.restore(tid, quiet=True)
+    except SystemExit as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"装回失败：{type(e).__name__}: {e}")
+    _reload_topics()
+    t = topics.get(tid)
+    rep["ready"] = bool(t and topics.data_ready(t)[0])
+    rep["dates"] = (t.dates() if t else []) or []
+    return rep
+
+
 @app.post("/api/topic/delete")
 def api_topic_delete(req: TopicDeleteReq,
                      x_api_key: str | None = Header(None, alias="X-Api-Key")):
-    """删掉一个题材（注册条目 + 控制表 + 几何文件）。
+    """把一个题材**移进素材库**（不是销毁，可以装回来）。
 
     为什么用 POST 而不是 DELETE：本项目其它接口都是 POST，前端那个 api()
     统一带 headers，加一个方法只会多一处不一致。语义上这是"执行一个动作"。
@@ -1946,21 +2285,17 @@ def api_topic_delete(req: TopicDeleteReq,
     tid = (req.id or "").strip()
     if not tid:
         raise HTTPException(400, "没给题材 id")
-    # 内置题材（随仓库分发的那些）不让删 —— 删了仓库里就少一个，
-    # 而用户多半只是想让页签清爽一点。要删请改 data/topics/topics.json。
-    builtin = {"mingqing", "ww1-europe", "ww2-europe", "tang", "song",
-               "us-civil-war", "deu-unification", "india-pakistan-partition",
-               "french-revolution"}
-    if tid in builtin:
-        raise HTTPException(400, (
-            f"「{tid}」是随仓库自带的内置题材，不能在界面上删。"
-            f"它不需要可以放着不看；真要移除请改 data/topics/topics.json。"))
+    # **内置题材也允许移走。** 我一度把它们排除在外，理由是"删了仓库里就少一个"，
+    # 但用户要的是**每个页签都能关**（一排内置题材占着，自己想看的反而不见）。
+    # 而且这里是**归档不是删除**：整份进 data/library/，随时装回来。
+    # 真要恢复仓库原状，`git checkout data/topics/topics.json` 加
+    # data/library 里搬回来即可。
     try:
         rep = NT.remove(tid, quiet=True)
     except SystemExit as e:
         raise HTTPException(404, str(e))
     except Exception as e:
-        raise HTTPException(500, f"删除失败：{type(e).__name__}: {e}")
+        raise HTTPException(500, f"移入素材库失败：{type(e).__name__}: {e}")
     _reload_topics()
     return rep
 
@@ -2062,5 +2397,20 @@ if __name__ == "__main__":
             webbrowser.open(url)
 
         threading.Thread(target=_open, daemon=True).start()
+
+    # 预生成质感小样。**必须在启动时就开始，不能等用户点开。**
+    # 每个小样要真渲一张图 + 真后期，五个就是十几秒；原来只在首次请求时
+    # 现算，于是新起的容器上，用户打开设置看到的是**五个破图**
+    # （请求还在算，<img> 已经拿到 404 了）。
+    def _warm_previews():
+        for p in STYLE_PRESETS:
+            try:
+                style_preview(p["id"])
+            except Exception:
+                pass
+        print("[自检] 质感小样已就绪")
+
+    import threading as _threading
+    _threading.Thread(target=_warm_previews, daemon=True).start()
 
     uvicorn.run(app, host=host, port=port, log_level="info")

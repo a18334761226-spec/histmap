@@ -1,0 +1,30 @@
+{
+  "id": "song",
+  "title": "宋 · 路制疆域",
+  "subtitle": "路制行政区 · 颜色为所属政权",
+  "kind": "dynasty",
+  "bbox": [
+    93.63,
+    20.76,
+    127.5,
+    47.51
+  ],
+  "years": [
+    980,
+    1040,
+    1080,
+    1120,
+    1140,
+    1200
+  ],
+  "units": "song_lu_gazetteer.json",
+  "control": "song_control.json",
+  "themes": [
+    "light"
+  ],
+  "default_date": "1080-01-01",
+  "default_size": "4x3",
+  "source_note": "数据源：《宋史·地理志》路制沿革 + 本项目重建的路治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
+  "license_note": "《宋史》为公有领域；geoBoundaries CHN 为 PDDL",
+  "merge_by": "unit"
+}

@@ -11,147 +11,6 @@
   },
   "topics": [
     {
-      "id": "mingqing",
-      "title": "明清",
-      "subtitle": "明代两京十三司 → 清代行省 · 颜色为所属政权",
-      "kind": "dynasty",
-      "bbox": [
-        71.61,
-        20.51,
-        136.82,
-        52.58
-      ],
-      "years": [
-        1400,
-        1550,
-        1644,
-        1700,
-        1820
-      ],
-      "units": "mingqing_province_gazetteer.json",
-      "control": "mingqing_control.json",
-      "themes": [
-        "light"
-      ],
-      "default_date": "1644-01-01",
-      "default_size": "16x9",
-      "merge_by": "unit",
-      "source_note": "数据源：《明史·地理志》《清史稿·地理志》省级建置 + 本项目重建的省治坐标 + geoBoundaries 现代县界。**省级示意，几何是重建的，非史料记载的实际界线**；边疆按通行分期简化。",
-      "license_note": "《明史》《清史稿》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
-      "max_km": 320
-    },
-    {
-      "id": "ww2-europe",
-      "title": "二战欧洲",
-      "subtitle": "1939–1945 · 实际控制格局",
-      "kind": "boundary",
-      "dataset": "cshapes",
-      "bbox": [
-        -11.0,
-        33.0,
-        62.0,
-        62.0
-      ],
-      "years": [
-        1939,
-        1945
-      ],
-      "control": "ww2_timeline.json",
-      "themes": [
-        "dark",
-        "light"
-      ],
-      "default_date": "1941-06-22",
-      "default_size": "16x9",
-      "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线。可精确到任意日期。",
-      "license_note": "CShapes 要求学术引用，商用条款未确认"
-    },
-    {
-      "id": "ww1-europe",
-      "title": "一战欧洲",
-      "subtitle": "1914–1918 · 实际控制与占领",
-      "kind": "boundary",
-      "dataset": "cshapes",
-      "bbox": [
-        -11.0,
-        33.0,
-        62.0,
-        62.0
-      ],
-      "years": [
-        1914,
-        1918
-      ],
-      "control": "ww1_timeline.json",
-      "themes": [
-        "dark",
-        "light"
-      ],
-      "default_date": "1916-06-01",
-      "default_size": "16x9",
-      "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线（同盟国/协约国占领）。",
-      "license_note": "CShapes 要求学术引用，商用条款未确认"
-    },
-    {
-      "id": "tang",
-      "title": "唐 · 藩镇割据",
-      "subtitle": "安史之乱后到唐末 · 藩镇辖境",
-      "kind": "dynasty",
-      "bbox": [
-        84.5,
-        15.54,
-        124.3,
-        46.31
-      ],
-      "years": [
-        763,
-        780,
-        807,
-        820,
-        875
-      ],
-      "units": "tang_zhou_gazetteer.json",
-      "control": "tang_fanzhen_timeline.json",
-      "themes": [
-        "light"
-      ],
-      "default_date": "807-01-01",
-      "default_size": "4x3",
-      "source_note": "数据源：《新唐书·方镇表》州县隶属 + 本项目重建的州治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
-      "license_note": "《新唐书》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
-      "merge_by": "owner"
-    },
-    {
-      "id": "song",
-      "title": "宋 · 路制疆域",
-      "subtitle": "路制行政区 · 颜色为所属政权",
-      "kind": "dynasty",
-      "bbox": [
-        93.63,
-        20.76,
-        127.5,
-        47.51
-      ],
-      "years": [
-        980,
-        1040,
-        1080,
-        1120,
-        1140,
-        1200
-      ],
-      "units": "song_lu_gazetteer.json",
-      "control": "song_control.json",
-      "themes": [
-        "light"
-      ],
-      "default_date": "1080-01-01",
-      "default_size": "4x3",
-      "source_note": "数据源：《宋史·地理志》路制沿革 + 本项目重建的路治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
-      "license_note": "《宋史》为公有领域；geoBoundaries CHN 为 PDDL",
-      "merge_by": "unit"
-    },
-    {
       "id": "us-civil-war",
       "title": "美国内战",
       "subtitle": "南北阵营 · 颜色为所属阵营",
@@ -266,63 +125,249 @@
       "license_note": "geoBoundaries FRA 为 CC BY 4.0（须署名）；geoBoundaries DEU 为 CC BY 4.0（须署名）；geoBoundaries AUT 为 CC BY 4.0（须署名）；geoBoundaries BEL 为 CC BY 4.0（须署名）；geoBoundaries NLD 为 CC BY 4.0（须署名）"
     },
     {
-      "id": "ming-dynasty-nine-borders",
-      "title": "明代九边",
-      "subtitle": "明代北方九大军事边镇的建制与分布格局演变",
-      "kind": "dynasty",
+      "id": "ww2-europe",
+      "title": "二战欧洲",
+      "subtitle": "1939–1945 · 实际控制格局",
+      "kind": "boundary",
+      "dataset": "cshapes",
       "bbox": [
-        96.3,
-        33.1,
-        126.29,
-        44.54
+        -11.0,
+        33.0,
+        62.0,
+        62.0
       ],
       "years": [
-        1449,
-        1571,
-        1619,
-        1636,
-        1644
+        1939,
+        1945
       ],
-      "units": "ming-dynasty-nine-borders_province_gazetteer.json",
-      "control": "ming-dynasty-nine-borders_control.json",
+      "control": "ww2_timeline.json",
       "themes": [
+        "dark",
         "light"
       ],
-      "default_date": "1619-01-01",
+      "default_date": "1941-06-22",
       "default_size": "16x9",
-      "merge_by": "unit",
-      "source_note": "用的是现代行政界、不是当年的界线，底图基于现代中国县级行政边界，军镇辖域映射至对应现代县域",
-      "license_note": "历史属性取自《明史·兵志》，边界数据采用CC BY 4.0开源许可"
+      "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线。可精确到任意日期。",
+      "license_note": "CShapes 要求学术引用，商用条款未确认"
     },
     {
-      "id": "ming-nine-border",
-      "title": "明代九边",
-      "subtitle": "明长城沿线九个军镇的防区与北疆控制格局",
-      "kind": "dynasty",
+      "id": "ww1-europe",
+      "title": "一战欧洲",
+      "subtitle": "1914–1918 · 实际控制与占领",
+      "kind": "boundary",
+      "dataset": "cshapes",
       "bbox": [
-        96.21,
-        33.1,
-        129.18,
-        45.84
+        -11.0,
+        33.0,
+        62.0,
+        62.0
       ],
       "years": [
-        1381,
-        1421,
-        1449,
-        1616,
-        1621,
-        1644
+        1914,
+        1918
       ],
-      "units": "ming-nine-border_province_gazetteer.json",
-      "control": "ming-nine-border_control.json",
+      "control": "ww1_timeline.json",
+      "themes": [
+        "dark",
+        "light"
+      ],
+      "default_date": "1916-06-01",
+      "default_size": "16x9",
+      "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线（同盟国/协约国占领）。",
+      "license_note": "CShapes 要求学术引用，商用条款未确认"
+    },
+    {
+      "id": "mingqing",
+      "title": "明清",
+      "subtitle": "明代两京十三司 → 清代行省 · 颜色为所属政权",
+      "kind": "dynasty",
+      "bbox": [
+        71.61,
+        20.51,
+        136.82,
+        52.58
+      ],
+      "years": [
+        1400,
+        1550,
+        1644,
+        1700,
+        1820
+      ],
+      "units": "mingqing_province_gazetteer.json",
+      "control": "mingqing_control.json",
       "themes": [
         "light"
       ],
-      "default_date": "1616-01-01",
+      "default_date": "1644-01-01",
       "default_size": "16x9",
       "merge_by": "unit",
-      "source_note": "底图为现代县界（gazetteer），用的是现代行政界、不是明代的界线。九边军镇防区依史料记载的控制范围对应到现代县级单元，仅表示大致归属，不表示精确边界。九边包括辽东、蓟州、宣府、大同、山西、延绥、宁夏、固原、甘肃等镇。",
-      "license_note": "遵循原始现代县界数据集的许可，通常为 CC BY 4.0 或公有领域。"
+      "source_note": "数据源：《明史·地理志》《清史稿·地理志》省级建置 + 本项目重建的省治坐标 + geoBoundaries 现代县界。**省级示意，几何是重建的，非史料记载的实际界线**；边疆按通行分期简化。",
+      "license_note": "《明史》《清史稿》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
+      "max_km": 320
+    },
+    {
+      "id": "central-plains-war",
+      "title": "中原大战：中原战争部分",
+      "subtitle": "1930年蒋介石与阎锡山、冯玉祥、李宗仁等派系在中原地区的控制格局变化",
+      "kind": "dynasty",
+      "bbox": [
+        88.11,
+        20.47,
+        136.1,
+        54.53
+      ],
+      "years": [
+        1928,
+        1929,
+        1930,
+        1931
+      ],
+      "units_file": "central-plains-war_units.geojson",
+      "control": "central-plains-war_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1930-01-01",
+      "default_size": "16x9",
+      "merge_by": "owner",
+      "source_note": "几何使用 geoboundaries 的中国现代省级行政区（CHN ADM1）作为底图，不是1930年的历史界线。控制区归属将基于历史文献在下一步按单元分配。",
+      "license_note": "geoBoundaries CHN 为 PDDL v1.0（≈公有领域）"
+    },
+    {
+      "id": "china-atlaspi",
+      "title": "中国 · 历史政体",
+      "subtitle": "真实历史边界（AtlasPI）· 任意年份可查",
+      "kind": "atlaspi",
+      "bbox": [
+        70,
+        15,
+        140,
+        55
+      ],
+      "focus": [
+        72,
+        15,
+        140,
+        55
+      ],
+      "min_confidence": 0.5,
+      "max_entities": 12,
+      "themes": [
+        "light"
+      ],
+      "default_date": "1644-01-01",
+      "default_size": "16x9",
+      "source_note": "边界数据来自 AtlasPI（atlaspi.it，Apache-2.0），是学术近似的历史政体多边形，不是测绘界线。每条记录自带置信度。",
+      "license_note": "AtlasPI · Apache-2.0 · 可商用",
+      "years": [
+        100,
+        500,
+        800,
+        1000,
+        1200,
+        1400,
+        1644,
+        1800,
+        1900,
+        1930,
+        1945
+      ]
+    },
+    {
+      "id": "song",
+      "title": "宋 · 路制疆域",
+      "subtitle": "路制行政区 · 颜色为所属政权",
+      "kind": "dynasty",
+      "bbox": [
+        93.63,
+        20.76,
+        127.5,
+        47.51
+      ],
+      "years": [
+        980,
+        1040,
+        1080,
+        1120,
+        1140,
+        1200
+      ],
+      "units": "song_lu_gazetteer.json",
+      "control": "song_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "1080-01-01",
+      "default_size": "4x3",
+      "source_note": "数据源：《宋史·地理志》路制沿革 + 本项目重建的路治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
+      "license_note": "《宋史》为公有领域；geoBoundaries CHN 为 PDDL",
+      "merge_by": "unit"
+    },
+    {
+      "id": "tang",
+      "title": "唐 · 藩镇割据",
+      "subtitle": "安史之乱后到唐末 · 藩镇辖境",
+      "kind": "dynasty",
+      "bbox": [
+        84.5,
+        15.54,
+        124.3,
+        46.31
+      ],
+      "years": [
+        763,
+        780,
+        807,
+        820,
+        875
+      ],
+      "units": "tang_zhou_gazetteer.json",
+      "control": "tang_fanzhen_timeline.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "807-01-01",
+      "default_size": "4x3",
+      "source_note": "数据源：《新唐书·方镇表》州县隶属 + 本项目重建的州治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
+      "license_note": "《新唐书》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
+      "merge_by": "owner"
+    },
+    {
+      "id": "huang-chao-rebellion",
+      "title": "黄巢起义控制区变迁",
+      "subtitle": "唐末黄巢起义期间各方控制区域的变化",
+      "kind": "dynasty",
+      "bbox": [
+        71.61,
+        5.79,
+        136.82,
+        54.92
+      ],
+      "years": [
+        874,
+        875,
+        876,
+        877,
+        878,
+        879,
+        880,
+        881,
+        882,
+        883,
+        884,
+        885
+      ],
+      "units": "huang-chao-rebellion_province_gazetteer.json",
+      "control": "huang-chao-rebellion_control.json",
+      "themes": [
+        "light"
+      ],
+      "default_date": "875-01-01",
+      "default_size": "16x9",
+      "merge_by": "owner",
+      "source_note": "使用 gazetteer 中国历史朝代底图：以现代县界为几何底图，省级单元治所经纬度定位；不采用唐代当时州县界线。黄巢起义控制范围仅依据主要城市与区域归属的史料重建，非精确战线。",
+      "license_note": "同 gazetteer 底图数据源许可（如 CC BY 4.0）。"
     }
   ]
 }

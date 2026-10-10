@@ -1,0 +1,26 @@
+{
+  "id": "ww1-europe",
+  "title": "一战欧洲",
+  "subtitle": "1914–1918 · 实际控制与占领",
+  "kind": "boundary",
+  "dataset": "cshapes",
+  "bbox": [
+    -11.0,
+    33.0,
+    62.0,
+    62.0
+  ],
+  "years": [
+    1914,
+    1918
+  ],
+  "control": "ww1_timeline.json",
+  "themes": [
+    "dark",
+    "light"
+  ],
+  "default_date": "1916-06-01",
+  "default_size": "16x9",
+  "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线（同盟国/协约国占领）。",
+  "license_note": "CShapes 要求学术引用，商用条款未确认"
+}

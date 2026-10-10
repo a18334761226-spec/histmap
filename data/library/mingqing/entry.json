@@ -1,0 +1,30 @@
+{
+  "id": "mingqing",
+  "title": "明清",
+  "subtitle": "明代两京十三司 → 清代行省 · 颜色为所属政权",
+  "kind": "dynasty",
+  "bbox": [
+    71.61,
+    20.51,
+    136.82,
+    52.58
+  ],
+  "years": [
+    1400,
+    1550,
+    1644,
+    1700,
+    1820
+  ],
+  "units": "mingqing_province_gazetteer.json",
+  "control": "mingqing_control.json",
+  "themes": [
+    "light"
+  ],
+  "default_date": "1644-01-01",
+  "default_size": "16x9",
+  "merge_by": "unit",
+  "source_note": "数据源：《明史·地理志》《清史稿·地理志》省级建置 + 本项目重建的省治坐标 + geoBoundaries 现代县界。**省级示意，几何是重建的，非史料记载的实际界线**；边疆按通行分期简化。",
+  "license_note": "《明史》《清史稿》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
+  "max_km": 320
+}

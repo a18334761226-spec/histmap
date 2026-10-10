@@ -98,6 +98,16 @@ class Topic:
                     ys.append(int(y))
             if ys:
                 return [f"{y}-01-01" for y in sorted(ys)]
+        if self.kind == "atlaspi":
+            # AtlasPI 是**按年现查**的，理论上任何年份都能出图。但界面上的
+            # 滑块要一组具体年份，所以：题材声明了 years 就用它；没声明就
+            # 给一组跨越常用历史时期的默认值，别返回空 —— 空数组会让滑块
+            # 一个点都没有，用户以为这个题材坏了（实测就是这么挂的）。
+            ys = [int(y) for y in (self.raw.get("years") or [])]
+            if not ys:
+                ys = [y for y in (100, 500, 800, 1000, 1200, 1400, 1600, 1800,
+                                  1900, 1930, 1945, 2000)]
+            return [f"{y}-01-01" for y in sorted(ys)]
         ctrl = self.control_path()
         if ctrl:
             data = json.load(open(ctrl, encoding="utf-8"))
@@ -679,6 +689,218 @@ def resolve_control_year(topic: "Topic", year: int) -> tuple[int, bool]:
     return (le[-1] if le else ys[0]), False
 
 
+def _simplify_rings(rings: list, tol: float) -> list:
+    """对多边形做 Douglas-Peucker 抽稀。
+
+    AtlasPI 的多边形点很密（一个政体几千个点），1:1 画出来边缘发毛、
+    缩放时还有锯齿。0.04°（约 4 km）的容差肉眼看不出形状差别，
+    线条却干净很多 —— 而且渲染快。
+    用 shapely 的 simplify(preserve_topology=True)，别自己写 —— 自己写很容易
+    把环弄成自交或退化，然后填充出奇怪的碎块。
+    """
+    try:
+        from shapely.geometry import Polygon
+    except Exception:
+        return rings
+    out = []
+    for r in rings:
+        if len(r) < 4:
+            continue
+        try:
+            g = Polygon(r)
+            if not g.is_valid:
+                g = g.buffer(0)
+            g = g.simplify(tol, preserve_topology=True)
+            if g.is_empty:
+                continue
+            geoms = getattr(g, "geoms", [g])
+            for gg in geoms:
+                if gg.geom_type != "Polygon":
+                    continue
+                out.append([(float(x), float(y)) for x, y in gg.exterior.coords])
+        except Exception:
+            out.append(r)          # 抽稀失败就用原环，别丢数据
+    return out
+
+
+def _drawable(s: str) -> bool:
+    """名字当前字体画得出来吗（见 histmap_core.fonts.drawable_text 的说明）。"""
+    import sys as _sys
+    _core = os.path.join(ROOT, "packages", "core")
+    if _core not in _sys.path:
+        _sys.path.insert(0, _core)
+    from histmap_core.fonts import drawable_text
+    return drawable_text(s)
+
+
+def _palette_for(names: list) -> dict:
+    """给一组名字分配颜色。
+
+    直接用 build_dynasty_map 那套 —— 它是按 OKLab 感知距离做最大分离的
+    （黄金角 + 6 档明度，实测 42 个分类最小距离 0.0687）。别在这里另写一套，
+    否则同一个系统里两处配色风格不一致。
+    """
+    import sys as _sys
+    _src = os.path.join(ROOT, "src")
+    if _src not in _sys.path:
+        _sys.path.insert(0, _src)
+    from build_dynasty_map import topic_palette
+    return topic_palette(list(names))
+
+
+def _atlaspi_frame(topic: "Topic", year: int):
+    """从 AtlasPI 取**真实历史边界**，建成一帧。
+
+    为什么加这条路：原来中国朝代题材的几何是「现代县界 + 按治所归并」反推出来的
+    —— 底图是**现代行政区**，这跟"历史地图"本身就矛盾。AtlasPI
+    (atlaspi.it) 给的是**真实历史政体多边形**（唐/吐蕃/渤海/南诏/大清/明/中华民国…），
+    Apache-2.0 可商用，按年查询，覆盖公元前 4500 – 2024。
+
+    附带的好处：它是**按年份现查**的，所以「任何年份都能出图」这条天然成立，
+    不像 dynasty 类那样必须预先构建每一年。
+
+    题材可用的字段：
+      bbox            画布取景范围
+      focus           只看落在这个框里的政体（默认用 bbox）
+      include / exclude  按名字子串白/黑名单（如只要"唐""吐蕃"）
+      min_confidence  过滤低于该置信度的记录（默认 0.5）
+      max_entities    最多画几个（避免一屏几十个色块，默认 14）
+    """
+    import sys as _sys
+    _core = os.path.join(ROOT, "packages", "core")
+    if _core not in _sys.path:
+        _sys.path.insert(0, _core)
+    from histmap_core import Region, Frame
+    from histmap_core.datasets.atlaspi import AtlasPIAdapter
+
+    raw = topic.raw
+    focus = raw.get("focus") or raw.get("bbox")
+    inc = [s.lower() for s in (raw.get("include") or [])]
+    exc = [s.lower() for s in (raw.get("exclude") or [])]
+    # 默认置信度门槛**提到 0.65**。原来 0.5 太松：AtlasPI 里 conf=0.5 是
+    # "几乎只是推测"的那一档，画上去跟 conf=0.9 的实体看起来一样可靠 ——
+    # 那是在**用图的观感掩盖数据的不确定性**。宁可少画，也不要让人以为
+    # 每一块都是确凿的。
+    minc = float(raw.get("min_confidence", 0.65) or 0.65)
+    cap = int(raw.get("max_entities", 14) or 14)
+    # 边界抽稀容差（度）。AtlasPI 的多边形点很密，1:1 画出来边缘发毛、发锯齿；
+    # 缩到 0.04°（约 4 km）肉眼看不出差别，线条干净很多。
+    simp = float(raw.get("simplify", 0.04) or 0.0)
+    kept_low = 0
+
+    gj = AtlasPIAdapter().fetch_year(int(year))
+    items = []
+    skipped_script = []
+    for f in gj.get("features") or []:
+        p = f.get("properties") or {}
+        name = str(p.get("name_original") or p.get("name") or "").strip()
+        if not name:
+            continue
+        conf = float(p.get("confidence_score") or 0)
+        if conf < minc:
+            continue
+        low = name.lower()
+        if inc and not any(k in low for k in inc):
+            continue
+        if exc and any(k in low for k in exc):
+            continue
+        rings = rings_of(f.get("geometry") or {})
+        if not rings:
+            continue
+        if simp > 0:
+            rings = _simplify_rings(rings, simp)
+            if not rings:
+                continue
+        # **画不出来的名字不要画。** AtlasPI 的政体名是多语种的
+        # （回鹘 `ئۇيغۇر خانلىقى`、准噶尔 `ᠵᠡᠭᠦᠨᠭᠠᠷ`、莫卧儿 `مغلیہ سلطنت`），
+        # 中文字体里没有这些字形 —— 画上去就是一片方框，而且不报错。
+        # 宁可少画一个，也不要一排方框；跳过的数量在副标题里说明。
+        if not _drawable(name):
+            skipped_script.append(name)
+            continue
+        # 面积（度²，只用来排序和筛选，不做精确计算）
+        xs = [q[0] for r in rings for q in r]
+        ys = [q[1] for r in rings for q in r]
+        if not xs:
+            continue
+        area = (max(xs) - min(xs)) * (max(ys) - min(ys))
+        cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        if focus and not (focus[0] <= cx <= focus[2] and focus[1] <= cy <= focus[3]):
+            continue
+        items.append({"name": name, "rings": rings, "conf": conf,
+                      "area": area, "type": p.get("entity_type") or "",
+                      "status": p.get("status") or ""})
+
+    items.sort(key=lambda x: -x["area"])
+    over = len(items) - cap
+    items = items[:cap]
+
+    regions = []
+    pal = _palette_for([x["name"] for x in items])
+    for i, it in enumerate(items):
+        regions.append(Region(
+            id=it["name"], name=it["name"], rings=it["rings"],
+            color=pal.get(it["name"]),
+            props={"owner": it["name"], "entity_type": it["type"],
+                   "confidence": it["conf"], "status": it["status"]}))
+    sub = f"{len(items)} 个政治实体"
+    if over > 0:
+        sub += f"（另有 {over} 个较小的未画）"
+    if skipped_script:
+        sub += f"（{len(skipped_script)} 个名字的字母本字体画不出，已跳过）"
+    fr = Frame(year=int(year), regions=regions,
+               title=f"{topic.title} · {year} 年", subtitle=sub)
+    # **图例带上置信度。** 这张图里每块边界的可靠程度差很多（AtlasPI 自己给的
+    # 0.5–0.9），只写名字会让 conf=0.9 和 conf=0.65 看起来一样确凿。
+    # 把数字摆出来，看图的人才知道哪块可以当真。
+    legend = [(f"{it['name']}  {it['conf']:.2f}", pal.get(it["name"]))
+              for it in items]
+    return fr, legend, minc
+
+
+def _render_atlaspi(topic: "Topic", date: str, theme: str, size: str,
+                    title=None, subtitle=None, footer=None,
+                    style_profile=None, strength: float = 1.0,
+                    period=None, text_only: bool = False):
+    """画一帧 AtlasPI 真实历史边界。样式与 dynasty 类保持一致。"""
+    from histmap_core import (Renderer, Layout, Style, auto_supersample)
+    year = int(str(date).split("-")[0])
+    W, H, mode = _sizes(size)
+    fr, legend, minc = _atlaspi_frame(topic, year)
+
+    style = Style.from_dict({
+        "id": f"{topic.id}_atlas", "theme": "light",
+        "canvas": {"background": "#efe7d6"},
+        "borders": {"color": "#6b5f4a", "width": 1.0},
+        "labels": {"size": 22, "color": "#2b2620", "halo": "#f7f2e8",
+                   "halo_width": 4, "min_area_ratio": 0.0002},
+        "title_style": {"size": 50, "color": "#241f1a",
+                        "subtitle_size": 24, "subtitle_color": "#6b5f50"},
+        "legend": {"enabled": True, "position": "bottom-left", "size": 15}})
+    lay = Layout(width=W, height=H, mode=mode, title_ratio=0.10,
+                 footer_ratio=0.055, margin_ratio=0.028)
+    if title is not None:
+        fr.title = title
+    if subtitle is not None:
+        fr.subtitle = subtitle
+    r = Renderer(style, lay, projection="mercator",
+                 supersample=auto_supersample(2))
+    img = r.render_frame(fr, bbox=_fit_frame_bbox(fr.regions, topic.bbox),
+                         legend_items=legend, legend_title="政治实体",
+                         text_only=text_only)
+    note = footer if footer is not None else topic.source_note
+    # **把置信度门槛写进页脚。** 图上每块边界都来自 AtlasPI 的学术近似，
+    # 而且已经滤掉了低于门槛的记录 —— 不写出来，看图的人会以为
+    # "图上没有的就是当时不存在"，而不是"数据里没有足够把握的"。
+    note = (note or "") + (
+        f"　只显示 AtlasPI 置信度 ≥ {minc:.2f} 的政体；数字为各政体置信度，"
+        f"是学术近似、不是测绘界线。")
+    if note and not text_only:
+        import make_ww2_video as M
+        M.draw_footer(img, note, r, style)
+    return img
+
+
 def _dynasty_geometry(topic: "Topic", year: int) -> dict:
     """取某一年的几何。**没有就当场算**。
 
@@ -720,7 +942,19 @@ def rings_of(geom: dict) -> list:
     return out
 
 
-def _fit_frame_bbox(regions, base_bbox, floor: float = 0.62):
+def _unassigned_labels(topic: "Topic") -> list:
+    """哪些区域名是「其他（未载）」这类兜底块。
+
+    它们不该参与取景，也不该抢调色板的颜色 —— 它们不是政治实体，
+    只是"这次重建没判定的地方"。名字取自题材数据（unassigned_label），
+    不写死，因为不同的题材可以叫不同的名字。
+    """
+    lbl = str(topic.raw.get("unassigned_label") or "其他（未载）")
+    return [lbl]
+
+
+def _fit_frame_bbox(regions, base_bbox, floor: float = 0.62,
+                    skip_names: tuple = ()):
     """按**这一帧自己的数据**取景，而不是全题材共用一个框。
 
     为什么必须逐帧算：明清的并集范围包含新疆、西藏（要到 1700/1820 才有），
@@ -833,9 +1067,15 @@ def _render_dynasty(topic: Topic, date: str, theme: str, size: str,
                                      style_profile, strength)
     r = Renderer(style, lay, projection="mercator",
                  supersample=auto_supersample(2))
-    img = r.render_frame(fr, bbox=_fit_frame_bbox(regions, topic.bbox),
-                         legend_items=legend, legend_title="所属政权",
-                         text_only=text_only)
+    img = r.render_frame(
+        fr,
+        # **取景要排除「其他（未载）」那一块。** 它可能比所有真实政权加起来
+        # 还大（黄巢题材里它盖住西藏/新疆/蒙古/东北）—— 把它算进取景框，
+        # 真实政权会被压成中间一小团。让它溢出画面就行，反正是中性灰底。
+        bbox=_fit_frame_bbox(regions, topic.bbox,
+                             skip_names=tuple(_unassigned_labels(topic))),
+        legend_items=legend, legend_title="所属政权",
+        text_only=text_only)
     note = footer if footer is not None else (
         _topic_json(topic).get("_footer")
         or gj.get("_meta", {}).get("method") or topic.source_note)
@@ -1010,6 +1250,9 @@ def render(topic_id: str, date: str, theme: str = "dark", size: str = "16x9",
     kw = {"title": title, "subtitle": subtitle, "footer": footer,
           "style_profile": style_profile, "strength": strength,
           "text_only": text_only}
+    if t.kind == "atlaspi":
+        # AtlasPI 是按年查询的，**任何年份都有**，所以不需要夹范围。
+        return _render_atlaspi(t, date, theme, size, period=period, **kw)
     if t.kind == "dynasty":
         # **超出题材数据范围的年份要如实说明。**
         # 用户要「任何年份」，我们能给 —— 但唐藩镇题材的控制表只到 906 年，

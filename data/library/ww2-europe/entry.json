@@ -1,0 +1,26 @@
+{
+  "id": "ww2-europe",
+  "title": "二战欧洲",
+  "subtitle": "1939–1945 · 实际控制格局",
+  "kind": "boundary",
+  "dataset": "cshapes",
+  "bbox": [
+    -11.0,
+    33.0,
+    62.0,
+    62.0
+  ],
+  "years": [
+    1939,
+    1945
+  ],
+  "control": "ww2_timeline.json",
+  "themes": [
+    "dark",
+    "light"
+  ],
+  "default_date": "1941-06-22",
+  "default_size": "16x9",
+  "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线。可精确到任意日期。",
+  "license_note": "CShapes 要求学术引用，商用条款未确认"
+}

@@ -76,6 +76,43 @@ class DraftState(TypedDict, total=False):
 
 
 # ══════════════════════════════════════════════════════════════
+#  进度上报
+# ══════════════════════════════════════════════════════════════
+# 为什么需要：实测一次起草要 **191 秒**（豆包 lite），而界面上只有一个转圈。
+# 干等三分钟，谁都会以为死了、去点第二次。这里让每个节点把自己的名字和时间
+# 写进一个全局字典，服务端再开一个轻量接口暴露出来，界面就能显示
+# 「正在分配归属…（已 92 秒）」。
+# 用锁而不是 threading.local：请求在 worker 线程里跑，而读进度的是另一个
+# 请求线程 —— local 读不到。
+_PROGRESS: dict = {"stage": "", "started": 0.0, "done": False, "error": ""}
+_PROGRESS_LOCK = __import__("threading").Lock()
+
+
+def set_progress(stage: str, done: bool = False, error: str = "") -> None:
+    import time as _t
+    with _PROGRESS_LOCK:
+        if stage and not _PROGRESS["started"]:
+            _PROGRESS["started"] = _t.time()
+        _PROGRESS["stage"] = stage
+        _PROGRESS["done"] = done
+        _PROGRESS["error"] = error
+
+
+def get_progress() -> dict:
+    import time as _t
+    with _PROGRESS_LOCK:
+        p = dict(_PROGRESS)
+    p["elapsed"] = round(_t.time() - p["started"], 1) if p["started"] else 0
+    return p
+
+
+def reset_progress() -> None:
+    with _PROGRESS_LOCK:
+        _PROGRESS.update({"stage": "", "started": 0.0, "done": False,
+                          "error": ""})
+
+
+# ══════════════════════════════════════════════════════════════
 #  节点
 # ══════════════════════════════════════════════════════════════
 def draft_geometry(state: DraftState) -> dict:

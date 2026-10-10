@@ -1,0 +1,153 @@
+{
+ "1928": {
+  "南京国民政府": [
+   "Jiangsu Province",
+   "Zhejiang Province",
+   "Anhui Province",
+   "Jiangxi Province",
+   "Fujian Province",
+   "Shanghai Municipality"
+  ],
+  "桂系": [
+   "Guangxi Zhuang Autonomous Region",
+   "Hunan Province",
+   "Hubei Province"
+  ],
+  "晋系": [
+   "Shanxi Province",
+   "Hebei Province",
+   "Beijing Municipality",
+   "Tianjin Municipality"
+  ],
+  "西北军": [
+   "Shaanxi Province",
+   "Gansu Province",
+   "Henan Province",
+   "Ningxia Ningxia Hui Autonomous Region",
+   "Qinghai Province"
+  ],
+  "东北军": [
+   "Liaoning Province",
+   "Jilin Province",
+   "Heilongjiang Province",
+   "Shandong Province"
+  ]
+ },
+ "1929": {
+  "南京国民政府": [
+   "Jiangsu Province",
+   "Zhejiang Province",
+   "Anhui Province",
+   "Jiangxi Province",
+   "Fujian Province",
+   "Shanghai Municipality",
+   "Hubei Province",
+   "Hunan Province",
+   "Shandong Province"
+  ],
+  "桂系": [
+   "Guangxi Zhuang Autonomous Region"
+  ],
+  "晋系": [
+   "Shanxi Province",
+   "Hebei Province",
+   "Beijing Municipality",
+   "Tianjin Municipality"
+  ],
+  "西北军": [
+   "Shaanxi Province",
+   "Gansu Province",
+   "Henan Province",
+   "Ningxia Ningxia Hui Autonomous Region",
+   "Qinghai Province"
+  ],
+  "东北军": [
+   "Liaoning Province",
+   "Jilin Province",
+   "Heilongjiang Province"
+  ]
+ },
+ "1930": {
+  "南京国民政府": [
+   "Jiangsu Province",
+   "Zhejiang Province",
+   "Anhui Province",
+   "Jiangxi Province",
+   "Fujian Province",
+   "Shanghai Municipality",
+   "Hubei Province",
+   "Hunan Province"
+  ],
+  "晋系": [
+   "Shanxi Province",
+   "Hebei Province",
+   "Beijing Municipality",
+   "Tianjin Municipality",
+   "Shandong Province"
+  ],
+  "西北军": [
+   "Shaanxi Province",
+   "Gansu Province",
+   "Henan Province",
+   "Ningxia Ningxia Hui Autonomous Region",
+   "Qinghai Province"
+  ],
+  "桂系": [
+   "Guangxi Zhuang Autonomous Region"
+  ],
+  "东北军": [
+   "Liaoning Province",
+   "Jilin Province",
+   "Heilongjiang Province"
+  ]
+ },
+ "1931": {
+  "南京国民政府": [
+   "Jiangsu Province",
+   "Zhejiang Province",
+   "Anhui Province",
+   "Jiangxi Province",
+   "Fujian Province",
+   "Shanghai Municipality",
+   "Hubei Province",
+   "Hunan Province",
+   "Henan Province",
+   "Shandong Province"
+  ],
+  "晋系": [
+   "Shanxi Province"
+  ],
+  "西北军": [
+   "Shaanxi Province",
+   "Gansu Province",
+   "Ningxia Ningxia Hui Autonomous Region",
+   "Qinghai Province"
+  ],
+  "桂系": [
+   "Guangxi Zhuang Autonomous Region"
+  ],
+  "东北军": [
+   "Liaoning Province",
+   "Jilin Province",
+   "Heilongjiang Province",
+   "Hebei Province",
+   "Beijing Municipality",
+   "Tianjin Municipality"
+  ]
+ },
+ "_comment": "由 new_topic.py 生成的题材规格，可直接手改。",
+ "_footer": "几何使用 geoboundaries 的中国现代省级行政区（CHN ADM1）作为底图，不是1930年的历史界线。控制区归属将基于历史文献在下一步按单元分配。",
+ "_palette": {
+  "南京国民政府": "#4a6fa5",
+  "晋系": "#a08a5c",
+  "西北军": "#9c5b52",
+  "桂系": "#6f8a5a",
+  "东北军": "#8a8f96"
+ },
+ "_era": {
+  "1928": "北伐告成、东北易帜，各派名义上归入南京国民政府。",
+  "1929": "蒋桂、蒋冯相继开战，南京方面收编两湖与山东。",
+  "1930": "中原大战爆发，晋、冯、桂联手反蒋，东北军坐观其变。",
+  "1931": "战事平息，东北军入主平津，各派重归南京旗下。"
+ }
+}

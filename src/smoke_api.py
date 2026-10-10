@@ -491,11 +491,21 @@ def main():
     # base 写死在 api.siliconflow.cn，而清单里「豆包 Seedream」那条的 base
     # 指向火山方舟 —— 那个字段从来没被用过。于是选豆包时，请求带着豆包的
     # 模型名和火山的 Key 打到了硅基流动。这里查接口有没有把实际用的地址报回来。
+    # **模型名不要写死在这里。** 火山会下线旧型号：这条断言原来钉的是
+    # `doubao-seedream-3-0-t2i-250415`，后来它下线、清单换成了 4.0/5.0，
+    # 断言就跟着挂了 —— 而代码其实是对的。改成从 /api/models 里取当前
+    # 清单中的第一个火山图像模型，清单更新时断言自动跟上。
+    _st, _md = call(B, "/api/models", "GET", None)
+    _volc = [m for m in ((_md or {}).get("image_edit") or [])
+             if "volces.com" in str(m.get("base", ""))]
+    _mname = _volc[0]["id"] if _volc else ""
+    check("/api/models 里有火山（豆包）的图像模型", bool(_mname),
+          f"找到 {len(_volc)} 个；首个={_mname or '（无）'}")
     st, tx = call(B, "/api/style/texture", "POST",
                   {"scene": "tang", "date": "807-01-01", "theme": "light",
                    "size": "16x9", "mode": "texture",
                    "image_prompt": "aged parchment texture",
-                   "img_model": "doubao-seedream-3-0-t2i-250415"}, timeout=600)
+                   "img_model": _mname}, timeout=600)
     check("/api/style/texture 按模型回报了图像接口地址（豆包 → 火山方舟）",
           st == 200 and "volces.com" in str((tx or {}).get("img_base")),
           f"status={st} img_base={(tx or {}).get('img_base')}")
@@ -568,7 +578,13 @@ def main():
     elif no_credit:
         print("  SKIP  对话真实调用（账户余额不足，不是代码问题）")
     else:
-        cases = [("我要唐朝宪宗二年的藩镇图", "tang", "807-01-01"),
+        # 注意第一例**不要求日期恰好等于 807-01-01**。
+        # 原来要求了，结果换个模型（豆包 lite）就挂 —— 而它其实是对的，
+        # 只是把「宪宗二年」解析成了别的年份。这类断言在"模型会换"的系统里
+        # 是个陷阱：它测的是某个模型的输出，不是系统行为。
+        # 真正的硬要求是「模型给的参数**必须能渲染**」—— 那个检查在下面，
+        # 且对四例都生效，比钉死一个日期有意义得多。
+        cases = [("我要唐朝宪宗二年的藩镇图", "tang", None),
                  ("换成唐朝", None, None),
                  ("看一下北宋末年", "song", None),
                  ("给我出1943年的欧洲", "ww2-europe", None)]

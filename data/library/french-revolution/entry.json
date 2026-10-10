@@ -1,0 +1,28 @@
+{
+  "id": "french-revolution",
+  "title": "法国大革命",
+  "subtitle": "1789年至1799年的法国及其周边国家",
+  "kind": "dynasty",
+  "bbox": [
+    -5.81,
+    40.92,
+    17.83,
+    55.47
+  ],
+  "years": [
+    1789,
+    1792,
+    1794,
+    1799
+  ],
+  "units_file": "french-revolution_units.geojson",
+  "control": "french-revolution_control.json",
+  "themes": [
+    "light"
+  ],
+  "default_date": "1789-01-01",
+  "default_size": "16x9",
+  "merge_by": "owner",
+  "source_note": "本地图使用的是现代国家的行政边界，而非1789年至1799年间的实际边界。",
+  "license_note": "geoBoundaries FRA 为 CC BY 4.0（须署名）；geoBoundaries DEU 为 CC BY 4.0（须署名）；geoBoundaries AUT 为 CC BY 4.0（须署名）；geoBoundaries BEL 为 CC BY 4.0（须署名）；geoBoundaries NLD 为 CC BY 4.0（须署名）"
+}

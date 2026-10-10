@@ -100,12 +100,50 @@ def _year(v) -> int:
 def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
     tid = spec.get("id") or _slug(spec.get("title") or "topic")
     kind = spec.get("kind") or "partition"
-    if kind not in ("partition", "gazetteer"):
-        raise SystemExit(f"kind 只能是 partition 或 gazetteer，收到 {kind}")
+    if kind not in ("partition", "gazetteer", "atlaspi"):
+        raise SystemExit(
+            f"kind 只能是 partition / gazetteer / atlaspi，收到 {kind}"
+            f"（atlaspi = 用 AtlasPI 的真实历史边界，按年现查）")
 
     os.makedirs(PROC, exist_ok=True)
     os.makedirs(CTRL, exist_ok=True)
     report = {"id": tid, "kind": kind, "warnings": []}
+
+    # ── 0) AtlasPI：真实历史边界，不需要控制表也不需要预构建几何 ──
+    # 为什么单独一条：这条路的数据源是**按年查询的历史政体多边形**
+    # （atlaspi.it，Apache-2.0 可商用，覆盖公元前 4500 – 2024），
+    # 拿到的就是当年的真实边界，而不是「现代县界反推」。
+    # 而且因为按年查，「任何年份都能出图」天然成立。
+    if kind == "atlaspi":
+        entry = {
+            "id": tid, "title": spec.get("title") or tid,
+            "subtitle": spec.get("subtitle") or "",
+            "kind": "atlaspi",
+            "bbox": spec.get("bbox") or [70, 15, 140, 55],
+            "focus": spec.get("focus") or spec.get("bbox") or [70, 15, 140, 55],
+            "include": spec.get("include") or [],
+            "exclude": spec.get("exclude") or [],
+            "min_confidence": spec.get("min_confidence", 0.5),
+            "max_entities": spec.get("max_entities", 12),
+            "years": spec.get("years") or [],
+            "themes": spec.get("themes") or ["light"],
+            "default_date": _pick_default_date(spec.get("default_date"),
+                                               [_year(y) for y in (spec.get("years") or [])]
+                                               or [1900]),
+            "default_size": spec.get("default_size") or "16x9",
+            "source_note": spec.get("source_note") or (
+                "边界数据来自 AtlasPI（atlaspi.it，Apache-2.0），"
+                "是学术近似的历史政体多边形，不是测绘界线。"),
+            "license_note": "AtlasPI · Apache-2.0 · 可商用",
+        }
+        _register(entry)
+        report["entry"] = entry
+        report["built_years"] = 0      # 按年现查，不需要预构建
+        report["atlaspi"] = True
+        report["warnings"].append(
+            "AtlasPI 题材：边界按年份**现查**，所以任何年份都能出图，"
+            "不需要预先构建；首次取某一年要联网（约 5–20 秒），之后走缓存。")
+        return report
 
     # ── 1) 几何：单元文件或坐标表 ──
     if kind == "partition":
@@ -263,8 +301,14 @@ def build(spec: dict, install: bool = False, quiet: bool = False) -> dict:
     # 那一年的几何就会构建失败。以控制表为准取交集，并把差异报出来。
     have_years = sorted(int(k) for k in ctrl_data
                         if not str(k).startswith("_") and str(k).isdigit())
-    # 模型的 years 可能是 [1387] / ["1387"] / ["1387-01-01"]，统一取年份
-    want_years = [_year(y) for y in (spec.get("years") or [])]
+    # 模型的 years 可能是 [1387] / ["1387"] / ["1387-01-01"]，统一取年份。
+    # **必须去重**：实测模型给过 [1929, 1930, 1930, 1931] —— 同一个年份两遍，
+    # 界面上就出现两个一模一样的页签年份，用户点哪个都一样。
+    want_years = list(dict.fromkeys(_year(y) for y in (spec.get("years") or [])))
+    if len(want_years) != len(spec.get("years") or []):
+        report["warnings"].append(
+            f"草案里的年份有重复，已去重：{[y for y in (spec.get('years') or [])]}"
+            f" → {want_years}")
     if want_years and have_years and set(want_years) - set(have_years):
         dropped = sorted(set(want_years) - set(have_years))
         report["warnings"].append(
@@ -415,38 +459,125 @@ def _remap_control(spec: dict, mapping: dict) -> dict:
     return out
 
 
+LIB = os.path.join(ROOT, "data", "library")
+
+
+def _lib_index() -> dict:
+    p = os.path.join(LIB, "index.json")
+    if os.path.exists(p):
+        try:
+            return json.load(open(p, encoding="utf-8"))
+        except Exception:
+            pass
+    return {"_comment": "素材库：从界面删掉的题材会整份搬到这里，可以再装回来。",
+            "items": []}
+
+
+def _lib_save(idx: dict) -> None:
+    os.makedirs(LIB, exist_ok=True)
+    json.dump(idx, open(os.path.join(LIB, "index.json"), "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+
+
 def remove(tid: str, quiet: bool = False) -> dict:
-    """删掉一个题材：注册条目 + 控制表 + 构建出来的几何。
+    """把一个题材**移进素材库**（不是销毁）。
 
-    **三处必须一起删**，少一处就留孤儿：题材列表里没了，但 data/control 和
-    data/processed 里还留着它的文件 —— 那种残留不会报错，只会越积越多，
-    而且哪天换个同 id 的题材建回来时，会拿旧的几何当新的用（实测过）。
+    为什么要归档而不是直接删：题材是「模型起草 + 逐年构建」出来的，
+    重建一次要一两分钟、还可能因为模型每次写的年份不一样而结果不同 ——
+    删掉就真的没了。而界面上又必须能清理（试几次就积一排半成品）。
+    所以删 = 整份搬进 data/library/<id>/，随时能装回来。
 
-    只删这个题材自己的文件（按 `<tid>_` 前缀），不碰别人。
+    搬走的东西（缺一个都会留下孤儿 / 装不回来）：
+      · topics.json 里的注册条目  → 存进 library/<id>/entry.json
+      · data/control/<id>_*.json
+      · data/processed/<id>_*.geojson / *_gazetteer.json
     """
     doc = json.load(open(TOPICS, encoding="utf-8"))
     items = doc["topics"] if isinstance(doc, dict) else doc
     hit = [t for t in items if str(t.get("id")) == tid]
     if not hit:
         raise SystemExit(f"没有这个题材：{tid}")
+    entry = dict(hit[0])
+
+    dest = os.path.join(LIB, tid)
+    os.makedirs(dest, exist_ok=True)
+    moved = []
+    for d in (CTRL, PROC):
+        if not os.path.isdir(d):
+            continue
+        for f in sorted(os.listdir(d)):
+            if f.startswith(tid + "_") or f == f"{tid}.json":
+                src = os.path.join(d, f)
+                tgt = os.path.join(dest, f)
+                if os.path.exists(tgt):
+                    os.remove(tgt)
+                os.replace(src, tgt)          # 移动，不是复制
+                moved.append(f)
+    json.dump(entry, open(os.path.join(dest, "entry.json"), "w",
+                          encoding="utf-8"), ensure_ascii=False, indent=2)
+
     items[:] = [t for t in items if str(t.get("id")) != tid]
     json.dump(doc, open(TOPICS, "w", encoding="utf-8"),
               ensure_ascii=False, indent=2)
 
-    removed = []
-    for d in (CTRL, PROC):
-        if not os.path.isdir(d):
-            continue
-        for f in os.listdir(d):
-            if f.startswith(tid + "_") or f == f"{tid}.json":
-                try:
-                    os.remove(os.path.join(d, f))
-                    removed.append(f)
-                except OSError:
-                    pass
+    idx = _lib_index()
+    idx["items"] = [x for x in idx["items"] if x.get("id") != tid]
+    idx["items"].append({"id": tid, "title": entry.get("title") or tid,
+                         "years": entry.get("years") or [],
+                         "files": len(moved) + 1,
+                         "at": __import__("datetime").datetime.now()
+                         .strftime("%Y-%m-%d %H:%M")})
+    _lib_save(idx)
     if not quiet:
-        print(f"  已删除题材 {tid}（{len(removed)} 个数据文件）")
-    return {"id": tid, "removed": removed}
+        print(f"  已把题材 {tid} 移入素材库（{len(moved) + 1} 个文件）")
+    return {"id": tid, "moved": moved, "library": f"data/library/{tid}",
+            "restorable": True}
+
+
+def library_items() -> list:
+    return _lib_index().get("items") or []
+
+
+def restore(tid: str, quiet: bool = False) -> dict:
+    """把素材库里的题材装回来（注册条目 + 数据文件一起归位）。"""
+    dest = os.path.join(LIB, tid)
+    ep = os.path.join(dest, "entry.json")
+    if not os.path.exists(ep):
+        raise SystemExit(f"素材库里没有 {tid}")
+    entry = json.load(open(ep, encoding="utf-8"))
+
+    back = []
+    for f in sorted(os.listdir(dest)):
+        if f == "entry.json":
+            continue
+        for d in (CTRL, PROC):
+            if not os.path.isdir(d):
+                continue
+            # 按文件名判断该回哪个目录：控制表是 *_control.json
+            if f.endswith("_control.json") and d == CTRL:
+                os.replace(os.path.join(dest, f), os.path.join(d, f))
+                back.append(f)
+            elif not f.endswith("_control.json") and d == PROC:
+                os.replace(os.path.join(dest, f), os.path.join(d, f))
+                back.append(f)
+
+    doc = json.load(open(TOPICS, encoding="utf-8"))
+    items = doc["topics"] if isinstance(doc, dict) else doc
+    items[:] = [t for t in items if str(t.get("id")) != tid]
+    items.append(entry)
+    json.dump(doc, open(TOPICS, "w", encoding="utf-8"),
+              ensure_ascii=False, indent=2)
+
+    idx = _lib_index()
+    idx["items"] = [x for x in idx["items"] if x.get("id") != tid]
+    _lib_save(idx)
+    try:
+        os.rmdir(dest)
+    except OSError:
+        pass
+    if not quiet:
+        print(f"  已从素材库装回题材 {tid}（{len(back)} 个文件）")
+    return {"id": tid, "restored": back}
 
 
 def _register(entry: dict) -> None:

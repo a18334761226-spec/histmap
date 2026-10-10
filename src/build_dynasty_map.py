@@ -434,6 +434,15 @@ def build(topic_id: str, year: int, max_km: float | None = None,
 
     # ── 县 → 单元（只在当年存在的单元里选最近；多锚点取最近的那个锚） ──
     cand = [(n, by_name[n]) for n in active]
+    # **超出归并半径的县怎么处理。**
+    # 原来是一律丢掉，于是「黄巢起义」这种全国题材里 1664 个县（一半以上）
+    # 直接不画 —— 图上留下大片空白。用户的原话是「这种大片白的你让我怎么用」。
+    # 空白在控制区图上会被读成"这里没人控制"，是**错误的暗示**。
+    # 所以默认把它们归到一个「其他（未载）」区域：地图铺满，同时页脚说清
+    # 这块不是没归属，而是**不在本次重建的判定范围内**。
+    # 想恢复旧行为：题材里写 "fill_unassigned": false。
+    fill = bool(t.raw.get("fill_unassigned", True))
+    fill_label = str(t.raw.get("unassigned_label") or "其他（未载）")
     assigned, far = {}, 0
     for c in counties:
         best, bd = None, 1e18
@@ -443,12 +452,18 @@ def build(topic_id: str, year: int, max_km: float | None = None,
                 bd, best = d, n
         if bd > max_km:
             far += 1
+            if fill:
+                assigned.setdefault(fill_label, []).append(c)
             continue
         assigned.setdefault(best, []).append(c)
+    if fill and fill_label in assigned:
+        active = dict(active)
+        active[fill_label] = fill_label
     placed = sum(len(v) for v in assigned.values())
     if not quiet:
         print(f"[4] 归属：{placed} 个县 -> {len(assigned)} 个单元；"
-              f"超出 {max_km:.0f} km 判为疆域外 {far} 个")
+              f"超出 {max_km:.0f} km 的 {far} 个"
+              + (f"（已归入「{fill_label}」）" if fill else "（已丢弃）"))
         no_c = [n for n in active if n not in assigned]
         if no_c:
             print(f"    今年有归属但没分到县的单元 {len(no_c)} 个: "
@@ -481,7 +496,13 @@ def build(topic_id: str, year: int, max_km: float | None = None,
         if simplify > 0:
             merged = merged.simplify(simplify, preserve_topology=True)
         c = merged.centroid
-        if merge_by == "unit":
+        if grp == fill_label:
+            # **「其他（未载）」必须是中性的灰，不能拿调色板里的颜色。**
+            # 第一版让它从调色板分到一个粉色，结果它面积最大、盖住西藏/新疆/
+            # 蒙古/东北，看上去像一个巨大的政权 —— 比留白更误导。
+            # 用一个贴近纸底的暖灰，读起来是"没覆盖到"，而不是"另一个国家"。
+            color = "#cfc7b6"
+        elif merge_by == "unit":
             us = [grp]
             name = disp.get(grp, grp)
             own = active.get(grp, grp)

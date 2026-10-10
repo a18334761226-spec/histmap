@@ -72,7 +72,13 @@ def main():
 
     args = ["docker", "run", "-d", "--name", NAME,
             "-p", f"{a.port}:{a.port}",
-            "-e", f"PORT={a.port}", "-e", "HOST=0.0.0.0"]
+            "-e", f"PORT={a.port}", "-e", "HOST=0.0.0.0",
+            # **本地容器允许用 .env 里的 Key。**
+            # 容器里看到的请求来源是 Docker 网关 172.17.0.1，不是 127.0.0.1，
+            # 于是否则服务端会把你当**公网访客**：本机 .env 里明明配了 key，
+            # 用模型的功能却全部 401「要一个 Key」。这是本地跑容器最容易卡住的点。
+            # 部署到公网时**不要**加这个变量（README/DEPLOY 里已说明）。
+            "-e", "HISTMAP_ALLOW_SERVER_KEY=1"]
     missing = []
     for inside, rel in MOUNTS.items():
         hostp = os.path.join(ROOT, rel.replace("/", os.sep))

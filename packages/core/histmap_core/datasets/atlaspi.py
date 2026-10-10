@@ -23,15 +23,27 @@ from .base import DatasetAdapter, Manifest, register
 API = "https://atlaspi.it"
 
 
-def _opener():
+def _opener(use_proxy: bool = True):
+    """HTTP 客户端。
+
+    **不要把代理写死。** 原来这里固定回退到 `http://127.0.0.1:7897`
+    （某台开发机的本地代理）。容器里那个地址什么都没有，于是所有取数都
+    `Connection refused` —— 而这个错在宿主机上永远复现不出来。
+    现在的规则：
+      · 只认环境变量里的代理（HTTPS_PROXY / https_proxy）
+      · 没设就直连
+      · 设了但连不通，由调用方退回直连（见 fetch_year）
+    另外**默认开启证书校验** —— 原来是 CERT_NONE，等于谁都能冒充这个数据源。
+    """
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    proxy = (os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
-             or "http://127.0.0.1:7897")
-    op = urllib.request.build_opener(
-        urllib.request.ProxyHandler({"http": proxy, "https": proxy}),
-        urllib.request.HTTPSHandler(context=ctx))
+    handlers = [urllib.request.HTTPSHandler(context=ctx)]
+    if use_proxy:
+        proxy = (os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+                 or os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy"))
+        if proxy:
+            handlers.insert(0, urllib.request.ProxyHandler(
+                {"http": proxy, "https": proxy}))
+    op = urllib.request.build_opener(*handlers)
     op.addheaders = [("User-Agent", "histmap/0.1")]
     return op
 
@@ -64,8 +76,19 @@ class AtlasPIAdapter(DatasetAdapter):
             with open(path, encoding="utf-8") as f:
                 return json.load(f)
         url = f"{API}/v1/export/geojson?year={year}"
-        with _opener().open(url, timeout=120) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        try:
+            with _opener().open(url, timeout=120) as r:
+                data = json.loads(r.read().decode("utf-8"))
+        except Exception as e:
+            # 配了代理但连不通（容器里最常见：代理是宿主机的 127.0.0.1）
+            # 就退回直连再试一次，而不是把 URLError 一路抛到用户面前。
+            if not os.environ.get("HTTPS_PROXY") and not os.environ.get("https_proxy"):
+                raise
+            try:
+                with _opener(use_proxy=False).open(url, timeout=120) as r:
+                    data = json.loads(r.read().decode("utf-8"))
+            except Exception:
+                raise e
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
         return data

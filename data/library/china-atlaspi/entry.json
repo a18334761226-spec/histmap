@@ -1,0 +1,27 @@
+{
+  "id": "china-atlaspi",
+  "title": "中国 · 历史政体",
+  "subtitle": "真实历史边界（AtlasPI）· 任意年份可查",
+  "kind": "atlaspi",
+  "bbox": [
+    70,
+    15,
+    140,
+    55
+  ],
+  "focus": [
+    72,
+    15,
+    140,
+    55
+  ],
+  "min_confidence": 0.5,
+  "max_entities": 12,
+  "themes": [
+    "light"
+  ],
+  "default_date": "1644-01-01",
+  "default_size": "16x9",
+  "source_note": "边界数据来自 AtlasPI（atlaspi.it，Apache-2.0），是学术近似的历史政体多边形，不是测绘界线。每条记录自带置信度。",
+  "license_note": "AtlasPI · Apache-2.0 · 可商用"
+}

@@ -1,0 +1,29 @@
+{
+  "id": "tang",
+  "title": "唐 · 藩镇割据",
+  "subtitle": "安史之乱后到唐末 · 藩镇辖境",
+  "kind": "dynasty",
+  "bbox": [
+    84.5,
+    15.54,
+    124.3,
+    46.31
+  ],
+  "years": [
+    763,
+    780,
+    807,
+    820,
+    875
+  ],
+  "units": "tang_zhou_gazetteer.json",
+  "control": "tang_fanzhen_timeline.json",
+  "themes": [
+    "light"
+  ],
+  "default_date": "807-01-01",
+  "default_size": "4x3",
+  "source_note": "数据源：《新唐书·方镇表》州县隶属 + 本项目重建的州治坐标 + geoBoundaries 现代县界。**几何是重建的，非史料记载的实际界线。**",
+  "license_note": "《新唐书》为公有领域；geoBoundaries CHN 为 PDDL（≈公有领域）",
+  "merge_by": "owner"
+}

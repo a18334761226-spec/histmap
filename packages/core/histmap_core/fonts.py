@@ -121,6 +121,62 @@ def find_font(size: int, prefer: str = ""):
     return _resolved[key]
 
 
+# CJK 字体（微软雅黑 / Noto CJK）覆盖的**非 CJK 部分**：拉丁、希腊、西里尔
+# 和常见标点符号。**必须逐段白名单**，不能写"小于 0x2E80 就放行" ——
+# 那样阿拉伯文(0x0600)、天城文(0x0900)、蒙古文(0x1800)、泰文(0x0E00)
+# 全都落在"小于"里面，等于没过滤（我第一版就是这么写的，实测全放行）。
+_LOW_OK = (
+    (0x0000, 0x007F), (0x0080, 0x00FF), (0x0100, 0x017F), (0x0180, 0x024F),
+    (0x0250, 0x02AF), (0x0300, 0x036F),
+    (0x0370, 0x03FF),                       # 希腊
+    (0x0400, 0x04FF), (0x0500, 0x052F),     # 西里尔
+    (0x1E00, 0x1EFF), (0x1F00, 0x1FFF),
+    (0x2000, 0x206F), (0x2070, 0x209F),     # 标点、上下标
+    (0x20A0, 0x20BF), (0x2100, 0x214F),
+    (0x2150, 0x218F), (0x2190, 0x21FF),
+    (0x2200, 0x22FF), (0x2460, 0x24FF),
+    (0x2500, 0x257F), (0x25A0, 0x25FF),
+    (0x2600, 0x27BF), (0x2E00, 0x2E7F),
+)
+
+
+def drawable_text(s: str) -> bool:
+    """这段文字当前字体**画得出来**吗？
+
+    为什么需要：AtlasPI 的政体名是多语种的（回鹘写作 `ئۇيغۇر خانلىقى`、
+    准噶尔写作 `ᠵᠡᠭᠦᠨᠭᠠᠷ`、莫卧儿写作 `مغلیہ سلطنت`）。中文字体里
+    **没有**阿拉伯文/蒙古文/天城文/泰文的字形 —— 直接画出来就是一片方框，
+    而且**不报错**，只有人眼看图才发现（跟"容器里没中文字体"是同一类事故）。
+
+    判据是**字符范围白名单**：CJK 字体覆盖的是 CJK + 拉丁 + 西里尔 + 希腊
+    + 常见标点，其余一律当画不出来。宁可少标一个名字，也不要一排方框。
+    """
+    if not s:
+        return True
+    for ch in str(s):
+        o = ord(ch)
+        if any(a <= o <= b for a, b in _LOW_OK):
+            continue
+        if 0x2E80 <= o <= 0x9FFF:        # CJK 部首、假名、CJK 统一表意
+            continue
+        if 0xA000 <= o <= 0xA4CF:        # 彝文
+            continue
+        if 0xAC00 <= o <= 0xD7AF:        # 谚文
+            continue
+        if 0xF900 <= o <= 0xFAFF:        # CJK 兼容
+            continue
+        if 0xFE30 <= o <= 0xFE4F:        # CJK 兼容形式
+            continue
+        if 0xFF00 <= o <= 0xFFEF:        # 全角
+            continue
+        if 0x20000 <= o <= 0x3FFFF:      # CJK 扩展
+            continue
+        if o in (0x200B, 0x200C, 0x200D, 0xFEFF):
+            continue
+        return False
+    return True
+
+
 def font_report() -> dict:
     """给 /api/health 用：现在这套环境到底能不能画中文。
 
