@@ -63,7 +63,17 @@ TEXTURE_PROMPT_TAIL = (
     "surface. Uniform subtle texture only — nothing drawn on it: "
     "ABSOLUTELY NO text, no letters, no numbers, no map, no coastlines, no borders, "
     "no grid, no decorative linework, no ornaments, no pattern, no signature, "
-    "no watermark, no objects, no stains shaped like anything.")
+    "no watermark, no objects, no stains shaped like anything. "
+    # 下面这几句是「把质感推到阈值上限」用的。因为**纸纹再重也不可能弄错内容**
+    # （合成只落在背景像素上，内容像素一个都不碰），所以这里可以放心要重的质感，
+    # 唯一约束是别超过纸纹空白度那个阈值（BLANK_MAX_STD=11）。
+    # 实测（豆包 Seedream 4.0，唐 807）：不写这几句中尺度起伏 4.27，太素；
+    # 加上之后 8.04 —— 明显有斑驳、暗点、做旧的黄褐变化，且仍在阈值内，
+    # 内容改动都是 0 个像素。
+    "Visible paper character: pronounced fibre grain, small dark specks, "
+    "faint mottling and blotchy age toning, uneven warm ivory to light tan "
+    "colour across the sheet, a few soft water stains, slightly darker and "
+    "aged along the extreme outer edges.")
 
 # 合成纸纹时用的容差。底图背景是纯色，跟它的曼哈顿距离小于这个值就当作"背景"，
 # 只在背景像素上贴纸纹 —— 这样**结构上不可能**碰到任何地图内容。

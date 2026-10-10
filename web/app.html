@@ -522,6 +522,20 @@ footer .acts{margin-left:auto;display:flex;gap:7px;flex:none}
   </div>
   <div class="acts">
     <button class="btn" id="btnOne">出这一张</button>
+    <!-- 大模型生图。默认选「模型出纸 + 代码画图」，因为实测下来它最好：
+         质感是模型的，但几何和中文标注全部由代码产生 —— **内容零改动**
+         （实测 398818 个内容像素一个没动）。
+         另外两种都试过，各有无法消除的代价：
+           · 模型重画整张：质感最像古地图集，但它会**重画边界**（NCC 0.51），
+             还会把中文标注画成形近错字（盧龍→盧西），并且在空白处自编
+             拉丁文装饰字（说了"不要画字"也没用 —— 提示词修不了这个）。
+           · 纯文生图：地理不可能准，只适合当概念图。 -->
+    <select id="mgMode" title="模型生图的三种做法" style="max-width:186px">
+      <option value="paper">模型出纸 + 代码画图（推荐）</option>
+      <option value="restyle">模型重画 + 代码补字</option>
+      <option value="txt2img">纯文生图（地理不准）</option>
+    </select>
+    <button class="btn" id="btnModelGen" title="让大模型参与出图">大模型生图</button>
     <button class="btn" id="btnFrames">出全部图</button>
     <button class="btn" id="btnZip" title="下载全部帧的 ZIP">帧 ZIP</button>
     <button class="btn" id="btnMp4" title="下载 MP4">MP4</button>
@@ -667,7 +681,7 @@ function setStat(t, p){
   if (p != null) b.firstElementChild.style.width = Math.round(p * 100) + '%';
 }
 function busy(b){
-  ['#btnOne','#btnFrames','#btnVideo','#btnZip','#btnMp4','#btnFill','#btnAdd',
+  ['#btnOne','#btnModelGen','#btnFrames','#btnVideo','#btnZip','#btnMp4','#btnFill','#btnAdd',
    '#btnClear','#btnApplyAll','#btnClrTxt','#btnUndo'].forEach(s => {
     const e = $(s); if (e) e.disabled = b;
   });
@@ -1499,6 +1513,59 @@ $('#btnClrTxt').onclick = () => {
   $(s).onchange = () => { readTx(); drawSb(); renderOne(true); }; });
 
 $('#btnOne').onclick = () => renderOne();
+
+/* 大模型生图。三种模式，默认「模型出纸 + 代码画图」——
+   那是实测最好的：质感来自模型，几何和中文标注全部来自代码，内容零改动。
+   另外两种保留，但把代价写在旁边，因为用户有权自己判断。 */
+$('#btnModelGen').onclick = async () => {
+  const s = scene(); if (!s){ toast('先选一个题材'); return; }
+  const f = frame();
+  const mode = $('#mgMode').value;
+  const isPaper = mode === 'paper';
+  busy(true);
+  setStat(isPaper ? '模型在画纸纹…（约 15–30 秒）'
+        : mode === 'txt2img' ? '纯文生图中…（约 20–60 秒）'
+        : '模型在重画这一帧…（约 20–60 秒）');
+  try {
+    const ep = isPaper ? '/api/style/texture' : '/api/render/model';
+    const body = isPaper
+      ? {scene:s.id, date: f?f.date:(s.dates||[])[0]||'',
+         theme: st.theme||(s.themes||['light'])[0], size: st.size||'16x9',
+         mode:'texture', img_model: cfg.imgModel||'', img_base: cfg.base||''}
+      : {scene:s.id, date: f?f.date:(s.dates||[])[0]||'',
+         theme: st.theme||(s.themes||['light'])[0], size: st.size||'16x9',
+         mode, img_model: cfg.imgModel||'', img_base: cfg.base||''};
+    const r = await api(ep, {method:'POST', body: JSON.stringify(body)});
+    const j = await r.json();
+    if (!r.ok) throw new Error(errText(j.detail, '生图失败'));
+    const bits = [`模型 ${esc(j.img_model || j.model || '')}`];
+    if (isPaper) {
+      bits.push('内容改动 ' + ((j.fidelity||{}).content_changed_ratio ?? '—') + ' 个像素');
+      if (j.blank && j.blank.mid_std != null) bits.push('纸纹起伏 ' + j.blank.mid_std);
+      bits.push('几何与中文＝代码，精确');
+    } else {
+      if (j.seconds) bits.push(j.seconds + 's');
+      const fid = j.fidelity || {};
+      if (fid.ncc != null) bits.push('NCC ' + fid.ncc);
+      if (mode === 'restyle') bits.push('边界被模型改过');
+      else bits.push('地理不可能准');
+    }
+    $('#view').innerHTML = `<div class="wrap">
+      <div style="flex:1;min-height:0;display:flex;align-items:center;justify-content:center">
+        <img src="${esc(j.image)}?t=${Date.now()}">
+      </div>
+      <div class="cap">${bits.filter(Boolean).join(' · ')}</div>
+      ${j.overlay_note ? `<div class="cap">${esc(j.overlay_note)}</div>` : ''}
+      ${j.base ? `<div class="cap">代码底图在
+        <a href="${esc(j.base)}" target="_blank">这里</a>，自己对比</div>` : ''}
+    </div>`;
+    setStat('大模型生图完成');
+  } catch(e) {
+    toast(e.message); setStat('生图失败');
+    $('#view').innerHTML = `<div class="tip"><b>模型生图失败</b>${esc(e.message)}</div>`;
+  } finally { busy(false); }
+};
+
 $('#btnFrames').onclick = () => submit('frames');
 $('#btnVideo').onclick = () => submit('video');
 $('#btnZip').onclick = () => { if (!lastJob){ toast('先出一次图，再下载'); return; }
