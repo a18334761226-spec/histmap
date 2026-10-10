@@ -1357,9 +1357,19 @@ function showModelNote(){
   const m = MODELS.chat.find(x => x.id === id);
   const base = m ? m.base : $('#sBase').value.trim();
   const ark = (base || '').includes('volces.com');
+  const ds = (base || '').includes('api.deepseek.com');
+  const canSee = m ? m.vision === true : false;
   $('#sNote').innerHTML =
-    `这个工具**不用图像模型画地图** —— 图是代码画的，参考图风格是**量**出来的。
-     换模型只影响「起草题材」的质量（年份齐不齐、单元名对不对）。` +
+    `地图是**代码画的**，模型不碰像素。模型只影响三处：
+     「起草新题材」「对话改图」「读参考图写风格描述」。
+     最后一项**必须用支持读图的模型**。` +
+    (m ? `<br><br>当前：<code>${esc(m.id)}</code> · ${
+      canSee ? '<b>支持读图</b>' : '不支持读图（读参考图时会自动换成同一家支持读图的模型）'}`
+      : '') +
+    (ds ? `<br><br><b>DeepSeek 官方用的是 <code>deepseek-flash</code> /
+      <code>deepseek-v4-pro</code></b>，和硅基流动的
+      <code>deepseek-ai/DeepSeek-V4-Flash</code> 是两个不同的名字，
+      不能混用 —— 选上面「DeepSeek 官方」那一组会自动填对 Base URL。` : '') +
     (ark ? `<br><br><b>火山方舟（豆包）要用控制台里的接入点 ID（<code>ep-…</code>），
       不是「豆包」这种显示名。</b>选「自定义」手填。` : '');
 }

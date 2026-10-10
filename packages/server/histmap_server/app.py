@@ -67,6 +67,19 @@ MODELS = {
     "chat": [
         # svc 是服务商名，界面按它分组。不能拿模型标签当服务名 ——
         # 那样下拉框的分组会显示成「Qwen2.5-7B」而不是「硅基流动」（踩过）。
+        # ── DeepSeek 官方 ──
+        # **注意模型名和硅基流动完全不同**：官方是 `deepseek-flash` /
+        # `deepseek-v4-pro`，而 `deepseek-ai/DeepSeek-V4-Flash` 是硅基流动的
+        # 命名，官方不认。早先清单里只有硅基流动那套 id，用户选「自定义 +
+        # api.deepseek.com」时下拉框里没有一个能用的名字，必然报「模型不存在」。
+        # 下面这两个 id 与 base URL 来自官方文档（api-docs.deepseek.com），
+        # 不是猜的：BASE URL https://api.deepseek.com，模型 deepseek-flash /
+        # deepseek-v4-pro；旧名 deepseek-v4-flash 仍被接受但已退役。
+        # 另外 deepseek-flash **支持读图**（Vision ✓），deepseek-v4-pro 不支持。
+        {"id": "deepseek-flash", "label": "DeepSeek Flash（快，支持读图）",
+         "base": "https://api.deepseek.com", "svc": "DeepSeek 官方", "vision": True},
+        {"id": "deepseek-v4-pro", "label": "DeepSeek V4 Pro（强，不支持读图）",
+         "base": "https://api.deepseek.com", "svc": "DeepSeek 官方", "vision": False},
         # ── 硅基流动（国内直连，一个 key 用多家模型）──
         {"id": "deepseek-ai/DeepSeek-V4-Flash", "label": "DeepSeek V4 Flash（快）",
          "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
@@ -80,7 +93,9 @@ MODELS = {
          "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
         {"id": "Qwen/Qwen2.5-7B-Instruct", "label": "Qwen2.5-7B（快、便宜）",
          "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动"},
-        # 注：DeepSeek 命名里没有「4.1」，只有 V4-Flash / V4-Pro / V3.2 / R1。
+        {"id": "Qwen/Qwen3-VL-32B-Instruct", "label": "Qwen3-VL-32B（能读图）",
+         "base": "https://api.siliconflow.cn/v1", "svc": "硅基流动", "vision": True},
+        # 注：硅基流动的 DeepSeek 命名里没有「4.1」，只有 V4-Flash / V4-Pro / V3.2 / R1。
         # 上面这些 id 是本机从 /v1/models 实际查出来的，不是猜的。
         # ── 火山方舟（豆包）──
         # 模型名要填控制台里的**接入点 ID**（ep-…）或模型 ID。
@@ -203,6 +218,29 @@ def api_models():
     return MODELS
 
 
+def vision_model_for(base: str, want: str = "") -> str:
+    """给某个接口地址挑一个**能读图**的模型名。挑不出来就返回空串。
+
+    为什么要按 base 挑：读参考图必须用视觉模型，而**每家的模型名不通用**。
+    早先这里硬编码 `Qwen/Qwen3-VL-32B-Instruct`，于是用户选了
+    DeepSeek 官方（api.deepseek.com）之后，这个 Qwen 的名字被发到官方接口 ——
+    必然「模型不存在」。跟当初 401 那次是同一类错：
+    选了哪家，就得用哪家的模型名。
+    """
+    chat = MODELS.get("chat") or []
+    b = (base or "").rstrip("/")
+    # 用户自己选的模型如果支持读图，就用它（他多半就是想用这个）
+    if want:
+        m = next((x for x in chat if x.get("id") == want), None)
+        if m and m.get("vision"):
+            return want
+    same = [x for x in chat if (x.get("base") or "").rstrip("/") == b]
+    vis = [x for x in same if x.get("vision")]
+    if vis:
+        return vis[0]["id"]
+    return ""
+
+
 # ════════════════════════════════════════════════════════════
 # 1) 风格提取：上传参考图 → 风格 profile
 # ════════════════════════════════════════════════════════════
@@ -266,41 +304,51 @@ async def style_extract(request: Request, file: UploadFile = File(...),
         if not key:
             out["vlm_error"] = "没有可用的 Key（视觉模型要 Key；纯代码提取不受影响）"
         else:
-            try:
-                from histmap_agent import LLMConfig
-                from histmap_agent.style_graph import run_style_graph
-                cfg = LLMConfig(
-                    key=key, base=(x_base_url or "").strip()
+            base = ((x_base_url or "").strip()
                     or os.environ.get("SILICONFLOW_BASE")
-                    or "https://api.siliconflow.cn/v1",
-                    # 读图要用视觉模型；界面选的对话模型多半不支持读图
-                    model=(x_model or "").strip() or "Qwen/Qwen3-VL-32B-Instruct",
-                    temperature=0.3)
-                # 只跑"读图出描述与提示词"这一段：不生成、不合成。
-                # 生成那一步是单独一个接口（/api/style/texture），
-                # 因为它要几十秒且要底图。
-                r, _ = run_style_graph(tmp, base_path="", vlm_cfg=cfg,
-                                       verbose=False)
-                # vlm=True 的含义是「**读出来了**」，不是「试着读了」。
-                # 图内部会把视觉模型不可用接住并退回纯代码，这时 desc/prompt 是空的；
-                # 若还报 vlm=True，调用方（和烟测）就会把"没读出来"当成功能正常。
-                got_desc = bool((r.get("style_desc") or "").strip())
-                out.update({
-                    "vlm": got_desc,
-                    "style_desc": r.get("style_desc") or "",
-                    "image_prompt": r.get("image_prompt") or "",
-                    "tags": r.get("tags") or [],
-                    "is_light": r.get("is_light"),
-                    "vlm_palette": r.get("vlm_palette") or [],
-                    "log": r.get("log") or [],
-                    "negative_prompt": r.get("negative_prompt") or "",
-                })
-                if not got_desc:
-                    out["vlm_error"] = next(
-                        (l for l in (r.get("log") or []) if "不可用" in l or "失败" in l),
-                        "视觉模型没有给出风格描述")
-            except Exception as e:
-                out["vlm_error"] = f"{type(e).__name__}: {str(e)[:300]}"
+                    or "https://api.siliconflow.cn/v1")
+            # 视觉模型必须**跟着接口地址走**：DeepSeek 官方是 deepseek-flash，
+            # 硅基流动是 Qwen3-VL。发错了就是「模型不存在」。
+            vmodel = vision_model_for(base, (x_model or "").strip())
+            if not vmodel:
+                out["vlm_error"] = (
+                    f"这家服务商（{base}）在清单里没有已知的支持读图的模型，"
+                    f"所以没法让它看参考图。纯代码提取不受影响；"
+                    f"要读图请在设置里选一个标注了「能读图」的模型。")
+            else:
+                try:
+                    from histmap_agent import LLMConfig
+                    from histmap_agent.style_graph import run_style_graph
+                    cfg = LLMConfig(key=key, base=base, model=vmodel,
+                                    temperature=0.3)
+                    # 只跑"读图出描述与提示词"这一段：不生成、不合成。
+                    # 生成那一步是单独一个接口（/api/style/texture），
+                    # 因为它要几十秒且要底图。
+                    r, _ = run_style_graph(tmp, base_path="", vlm_cfg=cfg,
+                                           verbose=False)
+                    # vlm=True 的含义是「**读出来了**」，不是「试着读了」。
+                    # 图内部会把视觉模型不可用接住并退回纯代码，这时 desc/prompt
+                    # 是空的；若还报 vlm=True，调用方（和烟测）就会把
+                    # "没读出来"当成功能正常。
+                    got_desc = bool((r.get("style_desc") or "").strip())
+                    out.update({
+                        "vlm": got_desc,
+                        "vlm_model": vmodel,
+                        "style_desc": r.get("style_desc") or "",
+                        "image_prompt": r.get("image_prompt") or "",
+                        "tags": r.get("tags") or [],
+                        "is_light": r.get("is_light"),
+                        "vlm_palette": r.get("vlm_palette") or [],
+                        "log": r.get("log") or [],
+                        "negative_prompt": r.get("negative_prompt") or "",
+                    })
+                    if not got_desc:
+                        out["vlm_error"] = next(
+                            (l for l in (r.get("log") or [])
+                             if "不可用" in l or "失败" in l),
+                            "视觉模型没有给出风格描述")
+                except Exception as e:
+                    out["vlm_error"] = f"{type(e).__name__}: {str(e)[:300]}"
     return out
 
 

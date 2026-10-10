@@ -461,6 +461,32 @@ def main():
           st == 200 and isinstance(r, dict) and "ok" in r and "step" in r,
           f"status={st} {str(r)[:140]}")
 
+    # 模型清单必须含 **DeepSeek 官方**，而且名字得是官方的。
+    # 踩过的坑：清单里只有硅基流动那套 `deepseek-ai/DeepSeek-V4-Flash`，
+    # 用户选「自定义 + api.deepseek.com」时下拉里没有一个能用的名字，
+    # 发过去必然「模型不存在」。
+    st, mj = call(B, "/api/models", timeout=60)
+    chat = (mj or {}).get("chat") or []
+    official = [x for x in chat if x.get("svc") == "DeepSeek 官方"]
+    check("/api/models 含 DeepSeek 官方，且用官方模型名",
+          st == 200 and {x["id"] for x in official} >= {"deepseek-flash"},
+          f"官方条目: {[x.get('id') for x in official]}")
+    check("DeepSeek 官方条目指向 api.deepseek.com",
+          all(x.get("base", "").startswith("https://api.deepseek.com")
+              for x in official) and bool(official),
+          f"base: {[x.get('base') for x in official]}")
+
+    # 视觉模型必须跟着服务商走，不能硬编码一家。
+    # 早先 /api/style/extract 硬编码 Qwen/Qwen3-VL-32B-Instruct，
+    # 用户选 DeepSeek 官方时这个 Qwen 的名字会被发到 api.deepseek.com。
+    st, kt = call(B, "/api/key/test", "POST", {},
+                  headers={"X-Api-Key": "sk-definitely-wrong",
+                           "X-Base-Url": "https://api.deepseek.com",
+                           "X-Model": "deepseek-flash"}, timeout=60)
+    check("DeepSeek 官方这条路真的通到了官方接口（不是 404/连不上）",
+          st == 200 and (kt or {}).get("step") in ("key", "balance"),
+          f"step={(kt or {}).get('step')} {str((kt or {}).get('detail'))[:140]}")
+
     st, r = call(B, "/api/key/test", "POST", {},
                  headers={"X-Api-Key": "sk-definitely-a-wrong-key-0000000000000000"})
     check("/api/key/test 错 key 时把问题指到 key 这一项",
