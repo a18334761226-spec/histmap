@@ -30,8 +30,10 @@ class CShapesAdapter(DatasetAdapter):
         id="cshapes",
         title="CShapes 2.0 近现代国界",
         source="ETH Zürich ICR — CShapes 2.0 (Schvitz et al. 2022, JCR)",
-        license="Academic citation required; commercial terms to be confirmed",
-        commercial_ok=False,          # 商用前须与作者确认
+        license=("CC BY-NC-SA 4.0 —— 须署名 Schvitz et al. 2022, JCR 66(1):144-61；"
+                 "**NC = 禁止商用**；SA = 衍生作品须同样许可。"
+                 "见 https://icr.ethz.ch/data/cshapes/ 与仓库 DATA-LICENSES.md"),
+        commercial_ok=False,          # **已确认禁止商用**（原写"待确认"，现已查明）
         redistribution_ok=False,      # 下载器模式
         coverage_years=(1886, 2019),
         region="全球",

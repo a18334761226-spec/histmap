@@ -50,8 +50,11 @@ SOURCES = {
     "cshapes": {
         "file": "CShapes-2.0.geojson",
         "url": "https://icr.ethz.ch/data/cshapes/CShapes-2.0.geojson",
-        "license": "学术引用要求；**商用条款未确认**（Schvitz et al. 2022, JCR 66(1):144-61）",
-        "note": "近现代国界 1886–2019，25 MB",
+        "license": ("CC BY-NC-SA 4.0；**NC = 禁止商用**，须署名 "
+                    "Schvitz et al. 2022, JCR 66(1):144-61"),
+        "note": ("近现代国界 1886–2019，25 MB。"
+                 "**ww1-europe / ww2-europe 两个题材受此约束，不能商用** —— "
+                 "详见仓库 DATA-LICENSES.md"),
     },
     "gb_usa": {
         "file": "gb_usa_adm1.geojson",

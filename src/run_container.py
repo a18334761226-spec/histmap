@@ -95,6 +95,21 @@ def main():
         print("！跳过不存在的目录：", ", ".join(missing))
     args.append(IMAGE)
 
+    # **先把同名的旧容器清掉。**
+    # Docker Desktop 重启之后，上次的容器会以 Exited 状态留着并继续占着名字，
+    # 于是 `docker run --name histmap-pub` 直接报
+    #   Conflict. The container name "/histmap-pub" is already in use
+    # 而且报错信息停在 docker 的用法提示上，看起来像参数写错了，很难查。
+    # 这台机器隔夜重启过，就是踩的这个。
+    rm = sh(["docker", "rm", "-f", NAME])
+    if rm.returncode == 0 and rm.stdout.strip():
+        print("  已清掉上次留下的同名容器")
+    elif rm.returncode != 0:
+        # 容器不存在时 docker rm 也返回非 0，这里不当错误处理
+        err = (rm.stderr or "").lower()
+        if "no such container" not in err:
+            print("  清理旧容器时有问题：", (rm.stderr or "")[:200])
+
     r = sh(args)
     if r.returncode != 0:
         print("启动失败：", r.stderr[-800:])

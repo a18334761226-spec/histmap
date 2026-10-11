@@ -118,7 +118,7 @@
       "default_date": "1941-06-22",
       "default_size": "16x9",
       "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线。可精确到任意日期。",
-      "license_note": "CShapes 要求学术引用，商用条款未确认"
+      "license_note": "CShapes 2.0 · CC BY-NC-SA 4.0 · **禁止商用**；署名 Schvitz et al. 2022, JCR 66(1):144-61。详见仓库 DATA-LICENSES.md"
     },
     {
       "id": "ww1-europe",
@@ -144,7 +144,7 @@
       "default_date": "1916-06-01",
       "default_size": "16x9",
       "source_note": "数据源：CShapes 2.0 真实国界 + 事件式控制时间线（同盟国/协约国占领）。",
-      "license_note": "CShapes 要求学术引用，商用条款未确认"
+      "license_note": "CShapes 2.0 · CC BY-NC-SA 4.0 · **禁止商用**；署名 Schvitz et al. 2022, JCR 66(1):144-61。详见仓库 DATA-LICENSES.md"
     },
     {
       "id": "mingqing",
